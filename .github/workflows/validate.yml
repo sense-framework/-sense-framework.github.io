@@ -1,7 +1,7 @@
 name: Validate
 on:
   push:
-    branches: [main, agent/company-platform-v5]
+    branches: [main, agent/unified-portal-support-v6]
   pull_request:
 permissions:
   contents: read
@@ -19,18 +19,28 @@ jobs:
           test -s index.html
           test -s senseos.css
           test -s senseos.js
+          test -s company.css
+          test -s company.js
           test -s romeo.js
           test -s icon.svg
-          grep -q 'id="app"' index.html
+          test "$(find _company -name 'company.part-*' | wc -l)" -eq 8
+          cat _company/company.part-* > /tmp/company.bundle.js
+          grep -q 'company.css?v=0.6.0' index.html
+          grep -q 'company.js?v=0.6.0' index.html
+          grep -q "const STORE='sense.company.portal.v1'" /tmp/company.bundle.js
+          grep -q 'Support queue' /tmp/company.bundle.js
+          grep -q 'Create account' /tmp/company.bundle.js
+          grep -q 'Join company' /tmp/company.bundle.js
+          grep -q 'Responsible Disclosure' /tmp/company.bundle.js
+          grep -q 'Service Level Agreement' /tmp/company.bundle.js
           for route in organization knowledge policies tasks approvals requests assets forms careers learning analytics status more profile faq contact security privacy terms; do
             grep -q "id=\"view-$route\"" index.html
           done
-          grep -q "departments: \[\]" senseos.js
-          grep -q "requests: \[\]" senseos.js
-          grep -q "assets: \[\]" senseos.js
-          ! grep -R -E 'Morgan Reed|Jordan Lee|Riley Chen|Project Romeo|SENSE Framework|Zeroform|SenseOS Product Brief|Romeo Architecture' index.html senseos.js romeo.js README.md manifest.webmanifest
+          ! grep -R -E 'Morgan Reed|Jordan Lee|Riley Chen|Project Romeo|SENSE Framework|Zeroform|SenseOS Product Brief|Romeo Architecture' index.html senseos.js company.js _company romeo.js README.md manifest.webmanifest
           ! grep -q 'DecompressionStream' index.html
           node --check senseos.js
+          node --check company.js
+          node --check /tmp/company.bundle.js
           node --check romeo.js
           node --check sw.js
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
