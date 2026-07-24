@@ -10,46 +10,130 @@
 <title>SENSE</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./senseos.css?v=0.3.0">
+<link rel="stylesheet" href="./senseos.css?v=0.4.0">
 </head>
 <body>
-<div class="boot" id="boot"><img src="./icon.svg" alt=""><strong>SENSE</strong><i></i></div>
+<div class="boot" id="boot" aria-hidden="true"><img src="./icon.svg" alt=""><div class="wordmark" aria-label="SENSE">SENSE</div><i></i></div>
+
 <main class="landing" id="landing">
-  <div class="landing-glow"></div>
-  <button class="landing-mark" id="openAuth" aria-label="Open SENSE"><img src="./icon.svg" alt=""><span>SENSE</span></button>
+  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+  <button class="landing-mark" id="openAuth" aria-label="Open SENSE">
+    <img src="./icon.svg" alt="">
+    <span class="wordmark">SENSE</span>
+  </button>
 </main>
-<section class="auth hidden" id="auth" aria-modal="true" role="dialog">
+
+<section class="auth hidden" id="auth" aria-modal="true" role="dialog" aria-labelledby="authTitle">
   <div class="glass auth-card">
-    <button class="close" id="closeAuth" aria-label="Close">×</button>
+    <button class="icon-button auth-close" id="closeAuth" aria-label="Close">×</button>
     <img src="./icon.svg" alt="" class="auth-logo">
-    <h1>SENSE</h1>
-    <form id="loginForm"><label>Email<input type="email" id="email" autocomplete="email" required></label><label>Password<input type="password" id="password" autocomplete="current-password" required></label><button class="primary" type="submit">Sign in</button></form>
+    <h1 id="authTitle" class="wordmark">SENSE</h1>
+    <form id="loginForm">
+      <label>Email<input type="email" id="email" autocomplete="email" required></label>
+      <label>Password<input type="password" id="password" autocomplete="current-password" required></label>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
     <button class="secondary" id="preview" type="button">Temporary administrator</button>
   </div>
 </section>
+
 <section class="app hidden" id="app">
   <aside class="rail glass">
     <button class="brand nav-target active" data-view="home" aria-label="Home"><img src="./icon.svg" alt=""></button>
-    <nav><button class="nav-target" data-view="feed" aria-label="Feed">◉</button><button class="nav-target" data-view="messages" aria-label="Messages">✉</button><button class="nav-target" data-view="people" aria-label="People">◎</button><button class="nav-target" data-view="files" aria-label="Files">▣</button><button class="nav-target" data-view="projects" aria-label="Projects">⌘</button><button class="nav-target" data-view="ai" aria-label="AI">✦</button><button class="nav-target" data-view="calendar" aria-label="Calendar">◇</button><button class="nav-target" data-view="admin" aria-label="Admin">◆</button></nav>
+    <nav aria-label="Primary">
+      <button class="nav-target" data-view="feed" aria-label="Feed">◉</button>
+      <button class="nav-target" data-view="messages" aria-label="Messages">✉</button>
+      <button class="nav-target" data-view="people" aria-label="People">◎</button>
+      <button class="nav-target" data-view="teams" aria-label="Teams">⬡</button>
+      <button class="nav-target" data-view="files" aria-label="Files">▣</button>
+      <button class="nav-target" data-view="projects" aria-label="Projects">⌘</button>
+      <button class="nav-target" data-view="calendar" aria-label="Calendar">◇</button>
+      <button class="nav-target" data-view="ai" aria-label="AI">✦</button>
+      <button class="nav-target" data-view="admin" aria-label="Administration">◆</button>
+    </nav>
     <button class="nav-target rail-settings" data-view="system" aria-label="System">⚙</button>
   </aside>
-  <header class="topbar glass"><div class="crumb"><i></i><span id="viewTitle">SENSE</span></div><button class="search-button" id="searchButton">Search <kbd>⌘ K</kbd></button><div class="top-actions"><span class="sync"><i></i><b>LOCAL</b></span><button class="avatar" id="profileButton">A</button></div></header>
-  <div class="workspace">
-    <section class="view active" id="view-home"><div class="home-empty glass"><img src="./icon.svg" alt=""><h1>SENSE</h1></div><div class="module-grid"><button class="module-card glass nav-target" data-view="feed"><span>◉</span><b>Feed</b><small>0</small></button><button class="module-card glass nav-target" data-view="messages"><span>✉</span><b>Messages</b><small>0</small></button><button class="module-card glass nav-target" data-view="people"><span>◎</span><b>People</b><small>0</small></button><button class="module-card glass nav-target" data-view="files"><span>▣</span><b>Files</b><small>0</small></button><button class="module-card glass nav-target" data-view="projects"><span>⌘</span><b>Projects</b><small>0</small></button><button class="module-card glass nav-target" data-view="calendar"><span>◇</span><b>Calendar</b><small>0</small></button></div></section>
-    <section class="view" id="view-feed"><header class="page-head"><h1>Feed</h1><button class="primary" id="newPost">New post</button></header><div class="empty-state glass"><span>◉</span><h2>No posts</h2></div></section>
-    <section class="view" id="view-messages"><header class="page-head"><h1>Messages</h1><button class="primary" id="newMessage">New message</button></header><div class="empty-state glass"><span>✉</span><h2>No conversations</h2></div></section>
-    <section class="view" id="view-people"><header class="page-head"><h1>People</h1><button class="primary" id="invitePerson">Invite</button></header><div class="empty-state glass"><span>◎</span><h2>No people</h2></div></section>
-    <section class="view" id="view-files"><header class="page-head"><h1>Files</h1><button class="primary" id="uploadFile">Upload</button></header><div class="empty-state glass"><span>▣</span><h2>No files</h2></div></section>
-    <section class="view" id="view-projects"><header class="page-head"><h1>Projects</h1><button class="primary" id="newProject">New project</button></header><div class="empty-state glass"><span>⌘</span><h2>No projects</h2></div></section>
-    <section class="view" id="view-ai"><div class="ai-shell glass"><main><div class="empty-state ai-empty"><span>✦</span><h2>AI</h2></div><form id="aiForm"><textarea id="aiInput" placeholder="Message"></textarea><button>↑</button></form></main><aside><button class="secondary" id="openRomeoFromAI">Romeo</button></aside></div></section>
-    <section class="view" id="view-calendar"><header class="page-head"><h1>Calendar</h1><button class="primary" id="newEvent">New event</button></header><div class="empty-state glass"><span>◇</span><h2>No events</h2></div></section>
-    <section class="view" id="view-admin"><header class="page-head"><h1>Administration</h1></header><div class="admin-grid"><article class="glass panel"><h2>Users</h2><strong>0</strong></article><article class="glass panel"><h2>Broadcasts</h2><strong>0</strong></article><article class="glass panel"><h2>Audit</h2><strong>0</strong></article></div></section>
-    <section class="view" id="view-system"><header class="page-head"><h1>System</h1></header><div class="settings-grid"><article class="glass panel"><h2>Account</h2><button class="secondary" id="logout">Sign out</button></article><article class="glass panel"><h2>Workspace API</h2><input id="apiEndpoint" placeholder="https://"><button class="primary" id="saveApi">Save</button></article><article class="glass panel"><h2>Application</h2><button class="secondary" id="installButton">Install</button></article></div></section>
+
+  <header class="topbar glass">
+    <div class="crumb"><i></i><span id="viewTitle">SENSE</span></div>
+    <button class="search-button" id="searchButton">Search <kbd>⌘ K</kbd></button>
+    <div class="top-actions">
+      <button class="icon-button nav-target" data-view="notifications" aria-label="Notifications">○</button>
+      <span class="sync"><i></i><b>LOCAL</b></span>
+      <button class="avatar nav-target" data-view="system" aria-label="Account">A</button>
+    </div>
+  </header>
+
+  <div class="workspace" id="workspace">
+    <section class="view active" id="view-home">
+      <div class="home-core glass"><img src="./icon.svg" alt=""><h1 class="wordmark">SENSE</h1></div>
+      <div class="module-grid" id="homeModules">
+        <button class="module-card glass nav-target" data-view="feed"><span>◉</span><b>Feed</b><small data-count="posts">0</small></button>
+        <button class="module-card glass nav-target" data-view="messages"><span>✉</span><b>Messages</b><small data-count="conversations">0</small></button>
+        <button class="module-card glass nav-target" data-view="people"><span>◎</span><b>People</b><small data-count="people">0</small></button>
+        <button class="module-card glass nav-target" data-view="teams"><span>⬡</span><b>Teams</b><small data-count="teams">0</small></button>
+        <button class="module-card glass nav-target" data-view="files"><span>▣</span><b>Files</b><small data-count="files">0</small></button>
+        <button class="module-card glass nav-target" data-view="projects"><span>⌘</span><b>Projects</b><small data-count="projects">0</small></button>
+      </div>
+    </section>
+
+    <section class="view" id="view-feed"><header class="page-head"><h1>Feed</h1><button class="primary" data-create="post">New post</button></header><div class="record-grid" id="feedList"></div></section>
+    <section class="view" id="view-messages"><header class="page-head"><h1>Messages</h1><button class="primary" data-create="conversation">New message</button></header><div class="messages-shell glass"><aside id="conversationList"></aside><main><header id="conversationHeader">Messages</header><div id="messageList" class="message-list"></div><form id="messageForm"><input id="messageInput" placeholder="Message" autocomplete="off"><button>↑</button></form></main></div></section>
+    <section class="view" id="view-people"><header class="page-head"><h1>People</h1><button class="primary" data-create="person">Invite</button></header><div class="record-grid cards" id="peopleList"></div></section>
+    <section class="view" id="view-teams"><header class="page-head"><h1>Teams</h1><button class="primary" data-create="team">New team</button></header><div class="record-grid cards" id="teamsList"></div></section>
+    <section class="view" id="view-files"><header class="page-head"><h1>Files</h1><button class="primary" id="uploadFile">Upload</button><input type="file" id="filePicker" hidden multiple></header><div class="record-grid cards" id="filesList"></div></section>
+    <section class="view" id="view-projects"><header class="page-head"><h1>Projects</h1><button class="primary" data-create="project">New project</button></header><div class="record-grid cards" id="projectsList"></div></section>
+    <section class="view" id="view-calendar"><header class="page-head"><h1>Calendar</h1><button class="primary" data-create="event">New event</button></header><div class="record-grid cards" id="eventsList"></div></section>
+
+    <section class="view" id="view-ai">
+      <div class="ai-shell glass"><main><div class="empty-state"><span>✦</span><h2>AI</h2></div><form id="aiForm"><textarea id="aiInput" placeholder="Message"></textarea><button>↑</button></form></main><aside><button class="secondary" id="openRomeoFromAI">Romeo</button></aside></div>
+    </section>
+
+    <section class="view" id="view-notifications"><header class="page-head"><h1>Notifications</h1><button class="secondary" id="clearNotifications">Clear</button></header><div class="record-grid" id="notificationsList"></div></section>
+
+    <section class="view" id="view-admin">
+      <header class="page-head"><h1>Administration</h1></header>
+      <div class="admin-grid">
+        <article class="glass panel metric"><h2>Users</h2><strong data-count="people">0</strong></article>
+        <article class="glass panel metric"><h2>Teams</h2><strong data-count="teams">0</strong></article>
+        <article class="glass panel metric"><h2>Projects</h2><strong data-count="projects">0</strong></article>
+        <article class="glass panel form-panel"><h2>Broadcast</h2><form id="broadcastForm"><input id="broadcastTitle" placeholder="Title" required><textarea id="broadcastBody" placeholder="Message" required></textarea><button class="primary">Send</button></form></article>
+        <article class="glass panel form-panel"><h2>Audit</h2><div id="auditList"></div></article>
+      </div>
+    </section>
+
+    <section class="view" id="view-faq"><header class="page-head"><h1>FAQ</h1><button class="primary" data-create="faq">New entry</button></header><div class="record-grid" id="faqList"></div></section>
+    <section class="view" id="view-contact"><header class="page-head"><h1>Contact</h1></header><div class="glass document-panel"><form id="contactForm"><label>Name<input id="contactName" required></label><label>Email<input type="email" id="contactEmail" required></label><label>Message<textarea id="contactMessage" required></textarea></label><button class="primary">Submit</button></form></div></section>
+    <section class="view" id="view-security"><header class="page-head"><h1>Security</h1></header><div class="glass document-panel" data-document="security"></div></section>
+    <section class="view" id="view-privacy"><header class="page-head"><h1>Privacy</h1></header><div class="glass document-panel" data-document="privacy"></div></section>
+    <section class="view" id="view-terms"><header class="page-head"><h1>Terms</h1></header><div class="glass document-panel" data-document="terms"></div></section>
+
+    <section class="view" id="view-system">
+      <header class="page-head"><h1>System</h1></header>
+      <div class="settings-grid">
+        <article class="glass panel"><h2>Account</h2><button class="secondary" id="logout">Sign out</button></article>
+        <article class="glass panel"><h2>Workspace API</h2><input id="apiEndpoint" placeholder="https://"><button class="primary" id="saveApi">Save</button></article>
+        <article class="glass panel"><h2>Application</h2><button class="secondary" id="installButton">Install</button></article>
+        <article class="glass panel link-list"><h2>Pages</h2><button class="nav-target" data-view="faq">FAQ</button><button class="nav-target" data-view="contact">Contact</button><button class="nav-target" data-view="security">Security</button><button class="nav-target" data-view="privacy">Privacy</button><button class="nav-target" data-view="terms">Terms</button></article>
+        <article class="glass panel"><h2>Data</h2><button class="secondary" id="resetData">Reset local data</button></article>
+      </div>
+    </section>
   </div>
-  <nav class="mobile-nav glass"><button class="nav-target active" data-view="home"><b>⌂</b><span>Home</span></button><button class="nav-target" data-view="feed"><b>◉</b><span>Feed</span></button><button class="nav-target" data-view="messages"><b>✉</b><span>Chat</span></button><button class="nav-target" data-view="projects"><b>⌘</b><span>Work</span></button><button class="nav-target" data-view="system"><b>⚙</b><span>System</span></button></nav>
+
+  <nav class="mobile-nav glass">
+    <button class="nav-target active" data-view="home"><b>⌂</b><span>Home</span></button>
+    <button class="nav-target" data-view="feed"><b>◉</b><span>Feed</span></button>
+    <button class="nav-target" data-view="messages"><b>✉</b><span>Chat</span></button>
+    <button class="nav-target" data-view="projects"><b>⌘</b><span>Work</span></button>
+    <button class="nav-target" data-view="system"><b>⚙</b><span>System</span></button>
+  </nav>
 </section>
+
 <section class="search-overlay hidden" id="searchOverlay"><div class="glass search-card"><input id="globalSearch" placeholder="Search"><button id="closeSearch">×</button><div id="searchResults"></div></div></section>
+
+<section class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="glass modal-card"><button class="icon-button modal-close" id="closeModal">×</button><div id="modalBody"></div></div></section>
 <div class="toast" id="toast"></div>
-<script src="./senseos.js?v=0.3.0"></script><script src="./romeo.js?v=0.3.0"></script><script src="./romeo-mobile.js?v=0.3.0"></script>
+<script src="./senseos.js?v=0.4.0"></script>
+<script src="./romeo.js?v=0.4.0"></script>
 </body>
 </html>
