@@ -23,11 +23,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _site/_company
-          cp index.html senseos.css senseos.js company.css company.js manifest.webmanifest sw.js icon.svg romeo.js _site/
+          cp index.html senseos.css senseos.js company.css company.js enterprise.css enterprise.js manifest.webmanifest sw.js icon.svg romeo.js _site/
           cp _company/company.part-* _site/_company/
           touch _site/.nojekyll
-          grep -q 'company.css?v=0.6.0' _site/index.html
           grep -q 'company.js?v=0.6.0' _site/index.html
+          grep -q 'enterprise.js' company.js
+          test -s _site/enterprise.js
+          test -s _site/enterprise.css
           ! grep -q 'DecompressionStream' _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
