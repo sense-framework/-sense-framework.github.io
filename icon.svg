@@ -1,1 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><radialGradient id="g" cx="35%" cy="28%"><stop offset="0" stop-color="#ff5369"/><stop offset=".45" stop-color="#b90c24"/><stop offset="1" stop-color="#170307"/></radialGradient></defs><rect width="512" height="512" rx="116" fill="#050505"/><rect x="74" y="74" width="364" height="364" rx="98" fill="url(#g)" stroke="#e3132c" stroke-width="4"/><g fill="none" stroke-linejoin="round"><rect x="146" y="146" width="220" height="220" transform="rotate(45 256 256)" stroke="#fff" stroke-opacity=".78" stroke-width="11"/><rect x="190" y="190" width="132" height="132" transform="rotate(45 256 256)" stroke="#ff3048" stroke-width="13"/><rect x="226" y="226" width="60" height="60" transform="rotate(45 256 256)" stroke="#fff" stroke-width="10"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">SENSE</title>
+  <desc id="desc">A tesseract brain mark with an integrated S.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#0b0305"/></linearGradient>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3efe9"/><stop offset=".48" stop-color="#d7d0c8"/><stop offset=".52" stop-color="#7f0010"/><stop offset="1" stop-color="#3b0008"/></linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/><rect x="22" y="22" width="468" height="468" rx="98" fill="none" stroke="#ffffff" stroke-opacity=".08"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M120 256c0-82 56-148 134-160v320c-78-12-134-78-134-160Z" stroke="#ece7df" stroke-width="6" opacity=".94"/>
+    <path d="M392 256c0-82-56-148-134-160v320c78-12 134-78 134-160Z" stroke="#5b000b" stroke-width="8" opacity=".98"/>
+    <g stroke="#ece7df" stroke-width="3" opacity=".72"><path d="M141 188l49-36 64 16-74 44-39-24Z"/><path d="M137 257l43-45 74 44-76 42-41-41Z"/><path d="M141 324l37-26 76 46-63 18-50-38Z"/><path d="M174 130l22 59-42 61"/><path d="M196 189l58-21v88"/><path d="M178 298l76-42v88"/></g>
+    <g stroke="#6f000e" stroke-width="3.5" opacity=".88"><path d="M371 188l-49-36-64 16 74 44 39-24Z"/><path d="M375 257l-43-45-74 44 76 42 41-41Z"/><path d="M371 324l-37-26-76 46 63 18 50-38Z"/><path d="M338 130l-22 59 42 61"/><path d="M316 189l-58-21v88"/><path d="M334 298l-76-42v88"/></g>
+    <g stroke-width="8" filter="url(#glow)"><path d="M165 202 256 150l91 52v108l-91 52-91-52Z" stroke="#ece7df" opacity=".9"/><path d="M205 226 256 196l51 30v60l-51 30-51-30Z" stroke="#6c000d" opacity=".95"/><path d="m165 202 40 24m142-24-40 24m-102 60-40 24m142-24 40 24M256 150v46m0 120v46" stroke="#8b0011" stroke-width="4" opacity=".72"/></g>
+    <path d="M302 180c-11-13-29-20-48-20-35 0-62 18-62 44 0 23 19 35 52 43 31 8 45 16 45 31 0 18-17 29-42 29-23 0-45-9-59-24" stroke="url(#s)" stroke-width="32"/>
+  </g>
+  <g fill="#ece7df"><circle cx="120" cy="256" r="5"/><circle cx="254" cy="96" r="5"/></g><g fill="#6f000e"><circle cx="392" cy="256" r="6"/><circle cx="258" cy="416" r="6"/></g>
+</svg>
