@@ -1,7 +1,7 @@
 name: Validate
 on:
   push:
-    branches: [main, agent/sense-web-os]
+    branches: [main, agent/unified-workspace-v2]
   pull_request:
 permissions:
   contents: read
@@ -13,21 +13,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Expand client
+      - name: Reconstruct and validate client
         run: |
-          mkdir client
-          cat _bundle/frontend.part-* > /tmp/sense-frontend.tar.gz
-          tar -xzf /tmp/sense-frontend.tar.gz -C client
-      - name: Validate client
-        run: |
-          node --check client/app.js
-          node --check client/config.js
-          node --check client/sw.js
-          node --check _patch/demo-admin.js
-          for file in client/js/*.js; do node --check "$file"; done
-          node -e "JSON.parse(require('fs').readFileSync('client/manifest.webmanifest','utf8'))"
-          test -s client/index.html
-          test -s client/icons/icon.svg
+          set -euo pipefail
+          cat _release/app.part-* _release/app.tail-* | base64 -d | gzip -dc > /tmp/sense.html
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          html=Path('/tmp/sense.html').read_text()
+          assert '<title>SENSE</title>' in html
+          assert 'id="appShell"' in html
+          scripts=re.findall(r'<script[^>]*>(.*?)</script>',html,re.S)
+          Path('/tmp/app.js').write_text(scripts[-1])
+          json.loads(Path('manifest.webmanifest').read_text())
+          PY
+          node --check /tmp/app.js
+          node --check sw.js
+          test -s icon.svg
   api:
     runs-on: ubuntu-latest
     steps:
@@ -35,8 +37,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Expand API
-        run: tar -xzf _bundle/backend-src.tar.gz -C backend
+      - name: Reconstruct API
+        run: |
+          cat _release/backend.part-* | base64 -d | tar -xz -C backend
       - working-directory: backend
         run: npm install --no-audit --no-fund
       - working-directory: backend
