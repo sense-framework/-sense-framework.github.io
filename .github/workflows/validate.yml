@@ -23,6 +23,7 @@ jobs:
           node --check client/app.js
           node --check client/config.js
           node --check client/sw.js
+          node --check _patch/demo-admin.js
           for file in client/js/*.js; do node --check "$file"; done
           node -e "JSON.parse(require('fs').readFileSync('client/manifest.webmanifest','utf8'))"
           test -s client/index.html
