@@ -1,7 +1,7 @@
 name: Validate
 on:
   push:
-    branches: [main, agent/unified-workspace-v2]
+    branches: [main, agent/empty-vanta-brand]
   pull_request:
 permissions:
   contents: read
@@ -20,17 +20,19 @@ jobs:
           test -s senseos.css
           test -s senseos.js
           test -s romeo.js
-          test -s romeo-mobile.js
+          test -s icon.svg
           grep -q 'id="app"' index.html
-          grep -q 'senseos.js' index.html
-          grep -q 'romeo.js' index.html
+          grep -q 'id="view-faq"' index.html
+          grep -q 'id="view-contact"' index.html
+          grep -q 'id="view-security"' index.html
+          grep -q 'id="view-privacy"' index.html
+          grep -q 'id="view-terms"' index.html
+          ! grep -R -E 'Morgan Reed|Jordan Lee|Riley Chen|Project Romeo|SENSE Framework|Zeroform|SenseOS Product Brief|Romeo Architecture' index.html senseos.js romeo.js README.md manifest.webmanifest
           ! grep -q 'DecompressionStream' index.html
           node --check senseos.js
           node --check romeo.js
-          node --check romeo-mobile.js
           node --check sw.js
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
-          test -s icon.svg
   api:
     runs-on: ubuntu-latest
     steps:
