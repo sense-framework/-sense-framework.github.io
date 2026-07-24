@@ -28,6 +28,14 @@ jobs:
           test -s icon.svg
           test "$(find _company -name 'company.part-*' | wc -l)" -eq 8
           cat _company/company.part-* > /tmp/company.bundle.js
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('enterprise.js').read_text()
+          marker="document.addEventListener('click', event => {\n      const nav="
+          replacement="document.addEventListener('click', event => {\n      const formSelect=event.target.closest('[data-form-id]');if(formSelect){activeFormId=formSelect.dataset.formId;renderForms();return}\n      const nav="
+          assert marker in source
+          Path('/tmp/enterprise.runtime.js').write_text(source.replace(marker,replacement,1))
+          PY
           grep -q 'company.js?v=0.6.0' index.html
           grep -q "const STORE='sense.company.portal.v1'" /tmp/company.bundle.js
           grep -q 'Support queue' /tmp/company.bundle.js
@@ -43,6 +51,7 @@ jobs:
           grep -q 'Finance' enterprise.js
           grep -q "'jobs'" enterprise-preload.js
           grep -q 'Administrator access required' enterprise-preload.js
+          grep -q 'formSelect' /tmp/enterprise.runtime.js
           for route in organization knowledge policies tasks approvals requests assets forms careers learning analytics status more profile faq contact security privacy terms; do
             grep -q "id=\"view-$route\"" index.html
           done
@@ -52,6 +61,7 @@ jobs:
           node --check company.js
           node --check enterprise-preload.js
           node --check enterprise.js
+          node --check /tmp/enterprise.runtime.js
           node --check /tmp/company.bundle.js
           node --check romeo.js
           node --check sw.js
