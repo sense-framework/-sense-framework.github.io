@@ -19,23 +19,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - name: Build browser-ready static artifact
+      - name: Build static artifact
         run: |
           set -euo pipefail
           mkdir -p _site
-          cat _release/app.part-* _release/app.tail-* | tr -d '\r\n\t ' | base64 -d | gzip -dc > _site/index.html
-          python3 - <<'PY'
-          from pathlib import Path
-          page = Path('_site/index.html')
-          html = page.read_text(encoding='utf-8')
-          scripts = '<script src="./romeo.js?v=0.2.2"></script><script src="./romeo-mobile.js?v=0.2.2"></script>'
-          if 'romeo.js?v=0.2.2' not in html:
-              html = html.replace('</body>', scripts + '</body>')
-          page.write_text(html, encoding='utf-8')
-          PY
-          cp manifest.webmanifest sw.js icon.svg romeo.js romeo-mobile.js _site/
+          cp index.html senseos.css senseos.js manifest.webmanifest sw.js icon.svg romeo.js romeo-mobile.js _site/
           touch _site/.nojekyll
-          grep -q 'id="appShell"' _site/index.html
+          grep -q 'id="app"' _site/index.html
+          ! grep -q 'DecompressionStream' _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
