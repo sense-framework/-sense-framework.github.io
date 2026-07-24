@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: sense-web-os-api
+    name: sense-unified-api
     runtime: node
     rootDir: backend
-    buildCommand: tar -xzf ../_bundle/backend-src.tar.gz -C . && npm install --no-audit --no-fund
+    buildCommand: cat ../_release/backend.part-* | base64 -d | tar -xz -C . && npm install --no-audit --no-fund
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -13,12 +13,20 @@ services:
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DB
-        value: sense_web_os
+        value: sense_workspace
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_EMAIL
         sync: false
       - key: CORS_ORIGINS
         value: https://sense-framework.github.io
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_ORG
+        value: sense-framework
       - key: TRUST_PROXY
         value: "1"
