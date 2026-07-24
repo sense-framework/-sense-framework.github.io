@@ -1,24 +1,15 @@
 {
-  "name": "SENSE Unified Workspace",
+  "name": "SENSE",
   "short_name": "SENSE",
-  "description": "A unified company workspace for people, communication, files, projects, AI, Romeo, and operations.",
   "id": "/",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
-  "background_color": "#050505",
-  "theme_color": "#050505",
-  "categories": ["business", "productivity", "social", "utilities"],
+  "background_color": "#020202",
+  "theme_color": "#020202",
   "icons": [
     {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
-  ],
-  "shortcuts": [
-    {"name":"Romeo","short_name":"Romeo","url":"./#/romeo","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
-    {"name":"Company Feed","short_name":"Feed","url":"./#/feed","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
-    {"name":"Messages","short_name":"Messages","url":"./#/messages","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
-    {"name":"Files","short_name":"Files","url":"./#/files","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
-    {"name":"SENSE AI","short_name":"AI","url":"./#/ai","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]}
   ]
 }
