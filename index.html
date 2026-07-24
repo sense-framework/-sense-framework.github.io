@@ -10,17 +10,14 @@
 <title>SENSE</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./senseos.css?v=0.4.0">
+<link rel="stylesheet" href="./senseos.css?v=0.5.0">
 </head>
 <body>
-<div class="boot" id="boot" aria-hidden="true"><img src="./icon.svg" alt=""><div class="wordmark" aria-label="SENSE">SENSE</div><i></i></div>
+<div class="boot" id="boot" aria-hidden="true"><img src="./icon.svg" alt=""><div class="wordmark">SENSE</div><i></i></div>
 
 <main class="landing" id="landing">
   <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
-  <button class="landing-mark" id="openAuth" aria-label="Open SENSE">
-    <img src="./icon.svg" alt="">
-    <span class="wordmark">SENSE</span>
-  </button>
+  <button class="landing-mark" id="openAuth" aria-label="Open SENSE"><img src="./icon.svg" alt=""><span class="wordmark">SENSE</span></button>
 </main>
 
 <section class="auth hidden" id="auth" aria-modal="true" role="dialog" aria-labelledby="authTitle">
@@ -49,7 +46,7 @@
       <button class="nav-target" data-view="projects" aria-label="Projects">⌘</button>
       <button class="nav-target" data-view="calendar" aria-label="Calendar">◇</button>
       <button class="nav-target" data-view="ai" aria-label="AI">✦</button>
-      <button class="nav-target" data-view="admin" aria-label="Administration">◆</button>
+      <button class="nav-target" data-view="more" aria-label="More">•••</button>
     </nav>
     <button class="nav-target rail-settings" data-view="system" aria-label="System">⚙</button>
   </aside>
@@ -60,7 +57,7 @@
     <div class="top-actions">
       <button class="icon-button nav-target" data-view="notifications" aria-label="Notifications">○</button>
       <span class="sync"><i></i><b>LOCAL</b></span>
-      <button class="avatar nav-target" data-view="system" aria-label="Account">A</button>
+      <button class="avatar nav-target" data-view="profile" aria-label="Profile">A</button>
     </div>
   </header>
 
@@ -72,8 +69,10 @@
         <button class="module-card glass nav-target" data-view="messages"><span>✉</span><b>Messages</b><small data-count="conversations">0</small></button>
         <button class="module-card glass nav-target" data-view="people"><span>◎</span><b>People</b><small data-count="people">0</small></button>
         <button class="module-card glass nav-target" data-view="teams"><span>⬡</span><b>Teams</b><small data-count="teams">0</small></button>
-        <button class="module-card glass nav-target" data-view="files"><span>▣</span><b>Files</b><small data-count="files">0</small></button>
         <button class="module-card glass nav-target" data-view="projects"><span>⌘</span><b>Projects</b><small data-count="projects">0</small></button>
+        <button class="module-card glass nav-target" data-view="tasks"><span>✓</span><b>Tasks</b><small data-count="tasks">0</small></button>
+        <button class="module-card glass nav-target" data-view="requests"><span>↗</span><b>Requests</b><small data-count="requests">0</small></button>
+        <button class="module-card glass nav-target" data-view="knowledge"><span>▤</span><b>Knowledge</b><small data-count="knowledge">0</small></button>
       </div>
     </section>
 
@@ -85,22 +84,47 @@
     <section class="view" id="view-projects"><header class="page-head"><h1>Projects</h1><button class="primary" data-create="project">New project</button></header><div class="record-grid cards" id="projectsList"></div></section>
     <section class="view" id="view-calendar"><header class="page-head"><h1>Calendar</h1><button class="primary" data-create="event">New event</button></header><div class="record-grid cards" id="eventsList"></div></section>
 
-    <section class="view" id="view-ai">
-      <div class="ai-shell glass"><main><div class="empty-state"><span>✦</span><h2>AI</h2></div><form id="aiForm"><textarea id="aiInput" placeholder="Message"></textarea><button>↑</button></form></main><aside><button class="secondary" id="openRomeoFromAI">Romeo</button></aside></div>
-    </section>
+    <section class="view" id="view-organization"><header class="page-head"><h1>Organization</h1><button class="primary" data-create="department">New department</button></header><div class="org-layout"><div class="record-grid cards" id="departmentsList"></div><article class="glass org-chart"><h2>Org chart</h2><div id="orgChart"></div></article></div></section>
+    <section class="view" id="view-knowledge"><header class="page-head"><h1>Knowledge</h1><button class="primary" data-create="knowledge">New article</button></header><div class="record-grid" id="knowledgeList"></div></section>
+    <section class="view" id="view-policies"><header class="page-head"><h1>Policies</h1><button class="primary" data-create="policy">New policy</button></header><div class="record-grid" id="policiesList"></div></section>
+    <section class="view" id="view-tasks"><header class="page-head"><h1>Tasks</h1><button class="primary" data-create="task">New task</button></header><div class="board-grid" id="tasksBoard"></div></section>
+    <section class="view" id="view-approvals"><header class="page-head"><h1>Approvals</h1><button class="primary" data-create="approval">New approval</button></header><div class="record-grid" id="approvalsList"></div></section>
+    <section class="view" id="view-requests"><header class="page-head"><h1>Requests</h1><button class="primary" data-create="request">New request</button></header><div class="record-grid" id="requestsList"></div></section>
+    <section class="view" id="view-assets"><header class="page-head"><h1>Assets</h1><button class="primary" data-create="asset">New asset</button></header><div class="record-grid cards" id="assetsList"></div></section>
+    <section class="view" id="view-forms"><header class="page-head"><h1>Forms</h1><button class="primary" data-create="form">New form</button></header><div class="record-grid cards" id="formsList"></div></section>
+    <section class="view" id="view-careers"><header class="page-head"><h1>Careers</h1><button class="primary" data-create="job">New opening</button></header><div class="record-grid cards" id="jobsList"></div></section>
+    <section class="view" id="view-learning"><header class="page-head"><h1>Learning</h1><button class="primary" data-create="course">New course</button></header><div class="record-grid cards" id="coursesList"></div></section>
+    <section class="view" id="view-status"><header class="page-head"><h1>Status</h1><button class="primary" data-create="service">New service</button></header><div class="record-grid cards" id="servicesList"></div></section>
+    <section class="view" id="view-analytics"><header class="page-head"><h1>Analytics</h1></header><div class="analytics-grid" id="analyticsGrid"></div></section>
 
+    <section class="view" id="view-ai"><div class="ai-shell glass"><main><div class="empty-state"><span>✦</span><h2>AI</h2></div><form id="aiForm"><textarea id="aiInput" placeholder="Message"></textarea><button>↑</button></form></main><aside><button class="secondary" id="openRomeoFromAI">Romeo</button></aside></div></section>
     <section class="view" id="view-notifications"><header class="page-head"><h1>Notifications</h1><button class="secondary" id="clearNotifications">Clear</button></header><div class="record-grid" id="notificationsList"></div></section>
 
-    <section class="view" id="view-admin">
-      <header class="page-head"><h1>Administration</h1></header>
-      <div class="admin-grid">
-        <article class="glass panel metric"><h2>Users</h2><strong data-count="people">0</strong></article>
-        <article class="glass panel metric"><h2>Teams</h2><strong data-count="teams">0</strong></article>
-        <article class="glass panel metric"><h2>Projects</h2><strong data-count="projects">0</strong></article>
-        <article class="glass panel form-panel"><h2>Broadcast</h2><form id="broadcastForm"><input id="broadcastTitle" placeholder="Title" required><textarea id="broadcastBody" placeholder="Message" required></textarea><button class="primary">Send</button></form></article>
-        <article class="glass panel form-panel"><h2>Audit</h2><div id="auditList"></div></article>
-      </div>
-    </section>
+    <section class="view" id="view-more"><header class="page-head"><h1>More</h1></header><div class="more-grid">
+      <button class="glass more-card nav-target" data-view="organization"><span>⬢</span><b>Organization</b></button>
+      <button class="glass more-card nav-target" data-view="knowledge"><span>▤</span><b>Knowledge</b></button>
+      <button class="glass more-card nav-target" data-view="policies"><span>§</span><b>Policies</b></button>
+      <button class="glass more-card nav-target" data-view="tasks"><span>✓</span><b>Tasks</b></button>
+      <button class="glass more-card nav-target" data-view="approvals"><span>⌁</span><b>Approvals</b></button>
+      <button class="glass more-card nav-target" data-view="requests"><span>↗</span><b>Requests</b></button>
+      <button class="glass more-card nav-target" data-view="assets"><span>▧</span><b>Assets</b></button>
+      <button class="glass more-card nav-target" data-view="forms"><span>≡</span><b>Forms</b></button>
+      <button class="glass more-card nav-target" data-view="careers"><span>◇</span><b>Careers</b></button>
+      <button class="glass more-card nav-target" data-view="learning"><span>△</span><b>Learning</b></button>
+      <button class="glass more-card nav-target" data-view="analytics"><span>⌇</span><b>Analytics</b></button>
+      <button class="glass more-card nav-target" data-view="status"><span>●</span><b>Status</b></button>
+    </div></section>
+
+    <section class="view" id="view-profile"><header class="page-head"><h1>Profile</h1></header><div class="glass profile-panel"><form id="profileForm"><label>Name<input id="profileName"></label><label>Title<input id="profileTitle"></label><label>Department<input id="profileDepartment"></label><label>Location<input id="profileLocation"></label><label>Bio<textarea id="profileBio"></textarea></label><button class="primary">Save</button></form></div></section>
+
+    <section class="view" id="view-admin"><header class="page-head"><h1>Administration</h1></header><div class="admin-grid">
+      <article class="glass panel metric"><h2>Users</h2><strong data-count="people">0</strong></article>
+      <article class="glass panel metric"><h2>Teams</h2><strong data-count="teams">0</strong></article>
+      <article class="glass panel metric"><h2>Requests</h2><strong data-count="requests">0</strong></article>
+      <article class="glass panel metric"><h2>Assets</h2><strong data-count="assets">0</strong></article>
+      <article class="glass panel form-panel"><h2>Broadcast</h2><form id="broadcastForm"><input id="broadcastTitle" placeholder="Title" required><textarea id="broadcastBody" placeholder="Message" required></textarea><button class="primary">Send</button></form></article>
+      <article class="glass panel form-panel"><h2>Audit</h2><div id="auditList"></div></article>
+    </div></section>
 
     <section class="view" id="view-faq"><header class="page-head"><h1>FAQ</h1><button class="primary" data-create="faq">New entry</button></header><div class="record-grid" id="faqList"></div></section>
     <section class="view" id="view-contact"><header class="page-head"><h1>Contact</h1></header><div class="glass document-panel"><form id="contactForm"><label>Name<input id="contactName" required></label><label>Email<input type="email" id="contactEmail" required></label><label>Message<textarea id="contactMessage" required></textarea></label><button class="primary">Submit</button></form></div></section>
@@ -108,16 +132,13 @@
     <section class="view" id="view-privacy"><header class="page-head"><h1>Privacy</h1></header><div class="glass document-panel" data-document="privacy"></div></section>
     <section class="view" id="view-terms"><header class="page-head"><h1>Terms</h1></header><div class="glass document-panel" data-document="terms"></div></section>
 
-    <section class="view" id="view-system">
-      <header class="page-head"><h1>System</h1></header>
-      <div class="settings-grid">
-        <article class="glass panel"><h2>Account</h2><button class="secondary" id="logout">Sign out</button></article>
-        <article class="glass panel"><h2>Workspace API</h2><input id="apiEndpoint" placeholder="https://"><button class="primary" id="saveApi">Save</button></article>
-        <article class="glass panel"><h2>Application</h2><button class="secondary" id="installButton">Install</button></article>
-        <article class="glass panel link-list"><h2>Pages</h2><button class="nav-target" data-view="faq">FAQ</button><button class="nav-target" data-view="contact">Contact</button><button class="nav-target" data-view="security">Security</button><button class="nav-target" data-view="privacy">Privacy</button><button class="nav-target" data-view="terms">Terms</button></article>
-        <article class="glass panel"><h2>Data</h2><button class="secondary" id="resetData">Reset local data</button></article>
-      </div>
-    </section>
+    <section class="view" id="view-system"><header class="page-head"><h1>System</h1></header><div class="settings-grid">
+      <article class="glass panel"><h2>Account</h2><button class="secondary nav-target" data-view="profile">Profile</button><button class="secondary" id="logout">Sign out</button></article>
+      <article class="glass panel"><h2>Workspace API</h2><input id="apiEndpoint" placeholder="https://"><button class="primary" id="saveApi">Save</button></article>
+      <article class="glass panel"><h2>Application</h2><button class="secondary" id="installButton">Install</button></article>
+      <article class="glass panel link-list"><h2>Pages</h2><button class="nav-target" data-view="faq">FAQ</button><button class="nav-target" data-view="contact">Contact</button><button class="nav-target" data-view="security">Security</button><button class="nav-target" data-view="privacy">Privacy</button><button class="nav-target" data-view="terms">Terms</button></article>
+      <article class="glass panel"><h2>Data</h2><button class="secondary" id="exportData">Export local data</button><button class="secondary" id="resetData">Reset local data</button></article>
+    </div></section>
   </div>
 
   <nav class="mobile-nav glass">
@@ -125,15 +146,15 @@
     <button class="nav-target" data-view="feed"><b>◉</b><span>Feed</span></button>
     <button class="nav-target" data-view="messages"><b>✉</b><span>Chat</span></button>
     <button class="nav-target" data-view="projects"><b>⌘</b><span>Work</span></button>
-    <button class="nav-target" data-view="system"><b>⚙</b><span>System</span></button>
+    <button class="nav-target" data-view="more"><b>•••</b><span>More</span></button>
   </nav>
 </section>
 
 <section class="search-overlay hidden" id="searchOverlay"><div class="glass search-card"><input id="globalSearch" placeholder="Search"><button id="closeSearch">×</button><div id="searchResults"></div></div></section>
-
 <section class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="glass modal-card"><button class="icon-button modal-close" id="closeModal">×</button><div id="modalBody"></div></div></section>
 <div class="toast" id="toast"></div>
-<script src="./senseos.js?v=0.4.0"></script>
+
+<script src="./senseos.js?v=0.5.0"></script>
 <script src="./romeo.js?v=0.4.0"></script>
 </body>
 </html>
