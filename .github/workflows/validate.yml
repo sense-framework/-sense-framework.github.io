@@ -13,28 +13,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Reconstruct and validate client
+      - name: Validate direct client
         run: |
           set -euo pipefail
-          cat _release/app.part-* _release/app.tail-* | base64 -d | gzip -dc > /tmp/sense.html
-          python3 - <<'PY'
-          import json,re
-          from pathlib import Path
-          html=Path('/tmp/sense.html').read_text()
-          loader=Path('index.html').read_text()
-          assert '<title>SENSE</title>' in html
-          assert 'id="appShell"' in html
-          assert 'romeo.js' in loader
-          assert 'romeo-mobile.js' in loader
-          assert '#/romeo' in Path('manifest.webmanifest').read_text()
-          scripts=re.findall(r'<script[^>]*>(.*?)</script>',html,re.S)
-          Path('/tmp/app.js').write_text(scripts[-1])
-          json.loads(Path('manifest.webmanifest').read_text())
-          PY
-          node --check /tmp/app.js
+          test -s index.html
+          test -s senseos.css
+          test -s senseos.js
+          test -s romeo.js
+          test -s romeo-mobile.js
+          grep -q 'id="app"' index.html
+          grep -q 'senseos.js' index.html
+          grep -q 'romeo.js' index.html
+          ! grep -q 'DecompressionStream' index.html
+          node --check senseos.js
           node --check romeo.js
           node --check romeo-mobile.js
           node --check sw.js
+          node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
           test -s icon.svg
   api:
     runs-on: ubuntu-latest
