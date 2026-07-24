@@ -11,5 +11,10 @@
   "theme_color": "#020202",
   "icons": [
     {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ],
+  "shortcuts": [
+    {"name":"Support","short_name":"Support","url":"./#/public/support","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
+    {"name":"Workspace","short_name":"Workspace","url":"./#/home","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
+    {"name":"More","short_name":"More","url":"./#/more","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]}
   ]
 }
