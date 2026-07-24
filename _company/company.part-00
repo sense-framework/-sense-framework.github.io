@@ -1,0 +1,27 @@
+(() => {
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const STORE='sense.company.portal.v1';
+const PAGE_DEFS={
+ about:{label:'About',icon:'○',group:'company'},support:{label:'Support',icon:'?',group:'company'},help:{label:'Help Center',icon:'⌁',group:'company'},contactPublic:{label:'Contact',icon:'✉',group:'company'},statusPublic:{label:'Status',icon:'●',group:'company'},
+ developers:{label:'Developers',icon:'⌘',group:'platform'},documentation:{label:'Documentation',icon:'▤',group:'platform'},integrations:{label:'Integrations',icon:'⬡',group:'platform'},changelog:{label:'Changelog',icon:'↻',group:'platform'},roadmap:{label:'Roadmap',icon:'◇',group:'platform'},feedback:{label:'Feedback',icon:'◉',group:'platform'},
+ newsroom:{label:'Newsroom',icon:'▥',group:'company'},press:{label:'Press',icon:'▧',group:'company'},partners:{label:'Partners',icon:'∞',group:'company'},careersPublic:{label:'Careers',icon:'△',group:'company'},brand:{label:'Brand',icon:'S',group:'company'},
+ accessibility:{label:'Accessibility',icon:'◎',group:'trust'},trust:{label:'Trust Center',icon:'◆',group:'trust'},disclosure:{label:'Responsible Disclosure',icon:'!',group:'trust'},cookies:{label:'Cookie Policy',icon:'◌',group:'legal'},acceptable:{label:'Acceptable Use',icon:'§',group:'legal'},sla:{label:'Service Level Agreement',icon:'⌇',group:'legal'},dpa:{label:'Data Processing Addendum',icon:'≡',group:'legal'},subprocessors:{label:'Subprocessors',icon:'⋮',group:'legal'}
+};
+const EMPTY={accounts:[],workspaces:[],activeAccountId:null,activeWorkspaceId:null,tickets:[],contact:[],feedback:[],helpArticles:[],apiKeys:[],webhooks:[],oauthApps:[],integrations:[],content:{},activity:[]};
+let state=load(),authMode='signin',publicPage=null,contentPage='about',toastTimer;
+function clone(v){return JSON.parse(JSON.stringify(v))}
+function load(){try{const raw=JSON.parse(localStorage.getItem(STORE)||'null');return raw&&typeof raw==='object'?{...clone(EMPTY),...raw,content:{...(raw.content||{})}}:clone(EMPTY)}catch{return clone(EMPTY)}}
+function save(){localStorage.setItem(STORE,JSON.stringify(state));renderInternal();renderPublicPage(publicPage)}
+function id(prefix='x'){const raw=globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;return `${prefix}_${raw.replace(/-/g,'').slice(0,16)}`}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmt(v){try{return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(v))}catch{return''}}
+function toast(text){let n=$('#toast');if(!n){n=document.createElement('div');n.id='toast';n.className='toast';document.body.append(n)}n.textContent=text;n.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>n.classList.remove('show'),2400)}
+function currentAccount(){return state.accounts.find(a=>a.id===state.activeAccountId)||null}
+function currentWorkspace(){return state.workspaces.find(w=>w.id===state.activeWorkspaceId)||null}
+function membership(){const a=currentAccount(),w=currentWorkspace();return a&&w?w.members?.find(m=>m.accountId===a.id)||null:null}
+function role(){if(sessionStorage.getItem('sense.preview')==='1'&&!currentAccount())return'Owner';return membership()?.role||'Member'}
+function canAdmin(){return ['Owner','Administrator'].includes(role())}
+function record(action){state.activity.unshift({id:id('act'),action,at:new Date().toISOString(),accountId:state.activeAccountId,workspaceId:state.activeWorkspaceId});state.activity=state.activity.slice(0,250)}
+function inviteCode(){return `SENSE-${Math.random().toString(36).slice(2,6).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`}
+function injectLanding(){const landing=$('#landing');if(!landing||$('#publicMenuButton'))return;landing.insertAdjacentHTML('beforeend',`<button class="public-menu-button" id="publicMenuButton">Menu</button><nav class="public-footer" aria-label="Public"><button data-public-page="about">About</button><button data-public-page="support">Support</button><button data-public-page="contactPublic">Contact</button><button data-public-page="statusPublic">Status</button><button data-public-page="privacy">Privacy</button><button data-public-page="terms">Terms</button></nav>`);document.body.insertAdjacentHTML('beforeend',`<section class="public-drawer hidden" id="publicDrawer"><aside class="public-drawer-panel"><div class="public-drawer-head"><img src="./icon.svg" alt=""><button id="closePublicDrawer">×</button></div><nav>${Object.entries(PAGE_DEFS).map(([key,p])=>`<button data-public-page="${key}"><span>${p.label}</span><b>${p.icon}</b></button>`).join('')}<button data-open-auth="1"><span>Sign in</span><b>→</b></button></nav></aside><button class="public-drawer-scrim" id="publicDrawerScrim" aria-label="Close"></button></section><section class="public-site hidden" id="
