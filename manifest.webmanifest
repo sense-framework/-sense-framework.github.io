@@ -1,7 +1,7 @@
 {
   "name": "SENSE Unified Workspace",
   "short_name": "SENSE",
-  "description": "A unified company workspace for people, communication, files, projects, AI, and operations.",
+  "description": "A unified company workspace for people, communication, files, projects, AI, Romeo, and operations.",
   "id": "/",
   "start_url": "./",
   "scope": "./",
@@ -15,6 +15,7 @@
     {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
   ],
   "shortcuts": [
+    {"name":"Romeo","short_name":"Romeo","url":"./#/romeo","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
     {"name":"Company Feed","short_name":"Feed","url":"./#/feed","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
     {"name":"Messages","short_name":"Messages","url":"./#/messages","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
     {"name":"Files","short_name":"Files","url":"./#/files","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
