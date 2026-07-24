@@ -1,13 +1,25 @@
-# SENSE Web OS
+# SENSE Unified Workspace
 
-An installable, mobile-first Web OS client deployed through GitHub Pages, with a separate MongoDB-backed Node API for accounts, messaging, administration, announcements, moderation, sessions, and audit history.
+SENSE is an installable company workspace that combines an intranet, social profiles and feed, team spaces, cloud files, messaging, project and issue tracking, calendar operations, administration, GitHub synchronization, and a company-aware AI workspace.
 
-## Release structure
+## Client modules
 
-GitHub Actions expands the verified client release parts in `_bundle/` and deploys the resulting static application to Pages. The backend release archive is expanded by the API build command before dependency installation.
+- Home dashboard and global activity
+- Company social feed, comments, reactions, and announcements
+- Direct messages and team channels
+- Employee profiles, skills, roles, and departments
+- Team spaces and membership
+- File and folder workspace with upload-ready controls
+- Projects, repository views, issue board, and GitHub integration surface
+- SENSE AI conversations and workspace context
+- Company calendar, agenda, and tasks
+- Administration, roles, suspension, broadcasts, and audit history
+- Unified search, notifications, mobile navigation, offline shell, and PWA installation
 
-## Backend deployment
+The static client runs immediately in temporary local administrator preview mode. Browser-local changes are for interface evaluation only.
 
-Deploy `backend/render.yaml`, then configure `MONGODB_URI`, `ADMIN_EMAIL`, and the generated `JWT_SECRET`. The account matching `ADMIN_EMAIL` receives administrator privileges at registration. MongoDB collections and indexes are created automatically when the API starts.
+## Production backend
 
-Never place MongoDB credentials or JWT secrets in the client, repository, or GitHub Pages settings. After deployment, enter the API address in SENSE under System → API.
+The `backend/` directory contains the MongoDB-backed Node API. It includes accounts, profiles, feed data, conversations, GridFS file storage, teams, projects, issues, events, notifications, AI threads, optional OpenAI Responses API access, optional GitHub organization synchronization, moderation, and audit logging.
+
+Configure the backend environment from `backend/.env.example`. Secrets belong only in the backend host, never in GitHub Pages or browser code.
