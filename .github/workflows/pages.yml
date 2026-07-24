@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _site/_release
-          cp index.html manifest.webmanifest sw.js icon.svg _site/
+          cp index.html manifest.webmanifest sw.js icon.svg romeo.js _site/
           cp _release/app.part-* _release/app.tail-* _site/_release/
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
