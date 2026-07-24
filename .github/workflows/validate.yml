@@ -1,7 +1,7 @@
 name: Validate
 on:
   push:
-    branches: [main, agent/empty-vanta-brand]
+    branches: [main, agent/company-platform-v5]
   pull_request:
 permissions:
   contents: read
@@ -22,11 +22,12 @@ jobs:
           test -s romeo.js
           test -s icon.svg
           grep -q 'id="app"' index.html
-          grep -q 'id="view-faq"' index.html
-          grep -q 'id="view-contact"' index.html
-          grep -q 'id="view-security"' index.html
-          grep -q 'id="view-privacy"' index.html
-          grep -q 'id="view-terms"' index.html
+          for route in organization knowledge policies tasks approvals requests assets forms careers learning analytics status more profile faq contact security privacy terms; do
+            grep -q "id=\"view-$route\"" index.html
+          done
+          grep -q "departments: \[\]" senseos.js
+          grep -q "requests: \[\]" senseos.js
+          grep -q "assets: \[\]" senseos.js
           ! grep -R -E 'Morgan Reed|Jordan Lee|Riley Chen|Project Romeo|SENSE Framework|Zeroform|SenseOS Product Brief|Romeo Architecture' index.html senseos.js romeo.js README.md manifest.webmanifest
           ! grep -q 'DecompressionStream' index.html
           node --check senseos.js
