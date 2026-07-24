@@ -21,13 +21,17 @@ jobs:
           import json,re
           from pathlib import Path
           html=Path('/tmp/sense.html').read_text()
+          loader=Path('index.html').read_text()
           assert '<title>SENSE</title>' in html
           assert 'id="appShell"' in html
+          assert 'romeo.js' in loader
+          assert '#/romeo' in Path('manifest.webmanifest').read_text()
           scripts=re.findall(r'<script[^>]*>(.*?)</script>',html,re.S)
           Path('/tmp/app.js').write_text(scripts[-1])
           json.loads(Path('manifest.webmanifest').read_text())
           PY
           node --check /tmp/app.js
+          node --check romeo.js
           node --check sw.js
           test -s icon.svg
   api:
