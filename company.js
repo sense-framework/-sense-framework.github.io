@@ -11,7 +11,18 @@
       document.head.appendChild(link);
     }
     if(!document.querySelector('script[src*="enterprise-preload.js"]'))await loadScript(`./enterprise-preload.js?v=${VERSION}`);
-    if(!document.querySelector('script[src*="enterprise.js"]'))await loadScript(`./enterprise.js?v=${VERSION}`);
+    if(document.querySelector('script[data-enterprise-runtime]'))return;
+    const response=await fetch(`./enterprise.js?v=${VERSION}`,{cache:'no-store'});
+    if(!response.ok)throw new Error(`Missing enterprise module (${response.status})`);
+    let source=await response.text();
+    const marker="document.addEventListener('click', event => {\n      const nav=";
+    const replacement="document.addEventListener('click', event => {\n      const formSelect=event.target.closest('[data-form-id]');if(formSelect){activeFormId=formSelect.dataset.formId;renderForms();return}\n      const nav=";
+    if(!source.includes(marker))throw new Error('Enterprise runtime marker not found');
+    source=source.replace(marker,replacement);
+    const script=document.createElement('script');
+    script.dataset.enterpriseRuntime='1';
+    script.textContent=source;
+    document.body.appendChild(script);
   };
   Promise.all(files.map(async file=>{
     const response=await fetch(file,{cache:'no-store'});
