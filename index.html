@@ -10,14 +10,70 @@
 <title>SENSE</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
-<style>
-:root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#050505;color:#f7f5f2;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}.boot{position:fixed;inset:0;display:grid;place-content:center;gap:24px;background:radial-gradient(circle at 50% 42%,rgba(227,19,44,.09),transparent 24rem),#020202}.mark{width:78px;aspect-ratio:1;border:1px solid rgba(227,19,44,.65);border-radius:24px;position:relative;margin:auto;box-shadow:0 0 60px rgba(227,19,44,.18)}.mark:before,.mark:after{content:"";position:absolute;inset:17px;border:1px solid #fff;transform:rotate(45deg)}.mark:after{inset:28px;border-color:#e3132c}.name{text-align:center;font-weight:900;letter-spacing:.42em;padding-left:.42em}.bar{width:176px;height:2px;background:#18181a;overflow:hidden}.bar i{display:block;width:45%;height:100%;background:#e3132c;animation:load 1.15s infinite}@keyframes load{from{transform:translateX(-120%)}to{transform:translateX(330%)}}.error{max-width:330px;color:#aaa;text-align:center;line-height:1.5;font-size:.82rem}.retry{border:1px solid rgba(227,19,44,.6);background:#17080b;color:#fff;border-radius:14px;padding:12px 18px;margin:auto;cursor:pointer}
-</style>
+<link rel="stylesheet" href="./senseos.css?v=0.2.2">
 </head>
 <body>
-<div class="boot"><div class="mark"></div><div class="name">SENSE</div><div class="bar"><i></i></div><div class="error" id="error"></div><button class="retry" id="retry" hidden>Retry</button></div>
-<script>
-(async()=>{const parts=[...Array.from({length:4},(_,i)=>`./_release/app.part-${String(i).padStart(2,'0')}?v=0.2.1`),...Array.from({length:6},(_,i)=>`./_release/app.tail-${String(i).padStart(2,'0')}?v=0.2.1`)];const error=document.getElementById('error'),retry=document.getElementById('retry');retry.onclick=()=>location.reload();try{const texts=await Promise.all(parts.map(async p=>{const r=await fetch(p,{cache:'no-store'});if(!r.ok)throw new Error(`Missing application asset (${r.status})`);return r.text()}));const binary=atob(texts.join('').replace(/\s+/g,''));const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));if(!('DecompressionStream'in window))throw new Error('This browser needs a current system update to open SENSE.');const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));const html=await new Response(stream).text();const tag='<script src="./romeo.js?v=0.2.1"><\/script><script src="./romeo-mobile.js?v=0.2.1"><\/script>';const patched=html.includes('</body>')?html.replace('</body>',`${tag}</body>`):`${html}${tag}`;document.open();document.write(patched);document.close()}catch(e){error.textContent=e.message||'SENSE could not start.';retry.hidden=false}})();
-</script>
+<div class="boot" id="boot"><div class="boot-mark"><i></i></div><strong>SENSE</strong><div class="boot-line"><i></i></div></div>
+<main class="lock" id="lock">
+  <div class="lock-grid"></div>
+  <button class="power" id="power" aria-label="Open SENSE"><span>SENSE</span><i></i><i></i><i></i></button>
+</main>
+<section class="auth hidden" id="auth" aria-modal="true">
+  <div class="auth-card">
+    <div class="mini-logo">S</div>
+    <h1>SENSE</h1>
+    <label>Email<input type="email" autocomplete="email" placeholder="name@example.com"></label>
+    <label>Password<input type="password" autocomplete="current-password" placeholder="••••••••"></label>
+    <button class="primary" id="signIn">Sign in</button>
+    <button class="secondary" id="preview">Open temporary administrator</button>
+    <p>Local preview mode uses sample workspace data and does not create a server account.</p>
+  </div>
+</section>
+<section class="app hidden" id="app">
+  <aside class="rail">
+    <button class="brand nav-target active" data-view="home" aria-label="Home">S</button>
+    <nav>
+      <button class="nav-target" data-view="feed" aria-label="Feed">◉</button>
+      <button class="nav-target" data-view="messages" aria-label="Messages">✉</button>
+      <button class="nav-target" data-view="people" aria-label="People">◎</button>
+      <button class="nav-target" data-view="files" aria-label="Files">▣</button>
+      <button class="nav-target" data-view="projects" aria-label="Projects">⌘</button>
+      <button class="nav-target" data-view="ai" aria-label="AI">✦</button>
+      <button class="nav-target" data-view="calendar" aria-label="Calendar">◇</button>
+      <button class="nav-target" data-view="admin" aria-label="Admin">◆</button>
+    </nav>
+    <button class="nav-target rail-settings" data-view="system" aria-label="System">⚙</button>
+  </aside>
+  <header class="topbar">
+    <div class="crumb"><i></i><span id="viewTitle">SENSE</span></div>
+    <button class="search-button" id="searchButton">Search <kbd>⌘ K</kbd></button>
+    <div class="top-actions"><span class="sync"><i></i><b>LOCAL</b></span><button class="avatar" id="profileButton">MA</button></div>
+  </header>
+  <div class="workspace">
+    <section class="view active" id="view-home">
+      <div class="hero"><div><span>UNIFIED WORKSPACE</span><h1>SENSE</h1><p>People, communication, files, projects, AI, and operations in one system.</p><button class="inline-action nav-target" data-view="feed">Open company feed</button></div><div class="core"><i></i><i></i><i></i><b></b></div></div>
+      <div class="stats"><article><small>PEOPLE</small><strong>24</strong><span>4 teams</span></article><article><small>PROJECTS</small><strong>8</strong><span>3 active releases</span></article><article><small>ACTIVITY</small><strong>37</strong><span>updates today</span></article><article><small>SYSTEM</small><strong>99.9%</strong><span>local preview</span></article></div>
+      <div class="home-grid">
+        <article class="panel activity"><div class="panel-head"><div><small>LIVE</small><h2>Company activity</h2></div><button class="quiet nav-target" data-view="feed">View all</button></div><div id="homeActivity"></div></article>
+        <article class="panel agenda"><div class="panel-head"><div><small>TODAY</small><h2>Agenda</h2></div></div><div class="agenda-item"><time>9:30</time><span><b>Platform sync</b><small>Engineering</small></span></div><div class="agenda-item"><time>1:00</time><span><b>Design review</b><small>Product</small></span></div><div class="agenda-item"><time>3:30</time><span><b>Romeo integration</b><small>AI Systems</small></span></div></article>
+      </div>
+    </section>
+    <section class="view" id="view-feed"><div class="content-grid"><main><article class="panel composer"><textarea id="postInput" placeholder="Share an update with the company…"></textarea><div><button>Attach</button><button class="primary compact" id="postButton">Post</button></div></article><div id="feedList"></div></main><aside><article class="panel side-card"><small>ANNOUNCEMENT</small><h3>SenseOS workspace preview</h3><p>The unified platform is being assembled across web, API, GitHub, MongoDB, and Romeo.</p></article><article class="panel side-card"><small>TRENDING</small><div class="trend">#senseos <b>18</b></div><div class="trend">#romeo <b>12</b></div><div class="trend">#research <b>9</b></div></article></aside></div></section>
+    <section class="view" id="view-messages"><div class="messages-layout"><aside class="conversation-list" id="conversationList"></aside><main class="chat-panel"><header><button class="mobile-back" id="chatBack">←</button><div><small>DIRECT</small><h2 id="chatTitle">System</h2></div></header><div class="chat-stream" id="chatStream"></div><form id="chatForm"><input id="chatInput" placeholder="Write a message"><button>↑</button></form></main></div></section>
+    <section class="view" id="view-people"><div class="page-head"><div><small>DIRECTORY</small><h1>People</h1></div><input class="filter" id="peopleFilter" placeholder="Filter people"></div><div class="people-grid" id="peopleGrid"></div></section>
+    <section class="view" id="view-files"><div class="page-head"><div><small>WORKSPACE</small><h1>Files</h1></div><button class="primary compact" id="uploadButton">Upload</button></div><div class="file-toolbar"><button class="active">All files</button><button>Recent</button><button>Shared</button><button>Favorites</button></div><div class="file-grid" id="fileGrid"></div></section>
+    <section class="view" id="view-projects"><div class="page-head"><div><small>DELIVERY</small><h1>Projects</h1></div><button class="primary compact" id="newProject">New project</button></div><div class="project-grid" id="projectGrid"></div><article class="panel issue-board"><div class="panel-head"><div><small>ISSUES</small><h2>Release board</h2></div></div><div class="board"><section><h3>Backlog <b>3</b></h3><article>Connect MongoDB backend <span>API</span></article><article>Account recovery flow <span>AUTH</span></article></section><section><h3>In progress <b>2</b></h3><article>Romeo chat integration <span>AI</span></article><article>Mobile navigation polish <span>UX</span></article></section><section><h3>Review <b>1</b></h3><article>Pages deployment pipeline <span>CI</span></article></section></div></article></section>
+    <section class="view" id="view-ai"><div class="ai-layout"><aside><div class="ai-brand"><b>✦</b><h2>SENSE AI</h2><p>Company-aware workspace intelligence.</p></div><button class="secondary" id="openRomeoFromAI">Open Romeo</button><div class="ai-context"><small>CONTEXT</small><label><input type="checkbox" checked> Company workspace</label><label><input type="checkbox" checked> Current projects</label><label><input type="checkbox"> Personal files</label></div></aside><main><div class="ai-empty"><span>✦</span><h1>How should we work?</h1><p>Ask for summaries, plans, drafts, research, analysis, or actions across the workspace.</p></div><form id="aiForm"><textarea id="aiInput" placeholder="Message SENSE AI"></textarea><button>↑</button></form></main></div></section>
+    <section class="view" id="view-calendar"><div class="page-head"><div><small>OPERATIONS</small><h1>Calendar</h1></div><button class="primary compact" id="newEvent">New event</button></div><div class="calendar-layout"><article class="panel month"><div class="month-head"><button>‹</button><h2>July 2026</h2><button>›</button></div><div class="weekdays"><b>Sun</b><b>Mon</b><b>Tue</b><b>Wed</b><b>Thu</b><b>Fri</b><b>Sat</b></div><div class="days" id="days"></div></article><aside class="panel schedule"><div class="panel-head"><div><small>UPCOMING</small><h2>Schedule</h2></div></div><div class="schedule-row"><time>JUL 24</time><span><b>Romeo workspace</b><small>4:30 PM</small></span></div><div class="schedule-row"><time>JUL 25</time><span><b>Backend deployment</b><small>10:00 AM</small></span></div><div class="schedule-row"><time>JUL 27</time><span><b>Platform review</b><small>2:00 PM</small></span></div></aside></div></section>
+    <section class="view" id="view-admin"><div class="page-head"><div><small>CONTROL PLANE</small><h1>Administration</h1></div><span class="admin-pill">TEMP ADMIN</span></div><div class="admin-grid"><article class="panel broadcast"><div class="panel-head"><div><small>SYSTEM</small><h2>Broadcast</h2></div></div><input placeholder="Title"><textarea placeholder="Company message"></textarea><button class="primary" id="broadcastButton">Transmit</button></article><article class="panel"><div class="panel-head"><div><small>ACCESS</small><h2>Users</h2></div><b>24</b></div><div id="adminUsers"></div></article><article class="panel audit"><div class="panel-head"><div><small>AUDIT</small><h2>Recent events</h2></div></div><div class="audit-row"><b>Preview administrator session opened</b><small>just now</small></div><div class="audit-row"><b>Pages release deployed</b><small>12 minutes ago</small></div><div class="audit-row"><b>Romeo module registered</b><small>24 minutes ago</small></div></article></div></section>
+    <section class="view" id="view-system"><div class="page-head"><div><small>SETTINGS</small><h1>System</h1></div></div><div class="settings-grid"><article class="panel setting-card"><h2>Profile</h2><p>Temporary Administrator<br><span>@admin-preview</span></p><button class="secondary" id="logout">Sign out</button></article><article class="panel setting-card"><h2>Workspace API</h2><p>Connect the MongoDB-backed company API.</p><input id="apiEndpoint" placeholder="https://sense-api.example.com"><button class="primary" id="saveApi">Save endpoint</button></article><article class="panel setting-card"><h2>Application</h2><p>Install SENSE on the home screen for standalone display and offline startup.</p><button class="secondary" id="installButton">Install application</button></article></div></section>
+  </div>
+  <nav class="mobile-nav"><button class="nav-target active" data-view="home"><b>⌂</b><span>Home</span></button><button class="nav-target" data-view="feed"><b>◉</b><span>Feed</span></button><button class="nav-target" data-view="messages"><b>✉</b><span>Chat</span></button><button class="nav-target" data-view="projects"><b>⌘</b><span>Work</span></button><button class="nav-target" data-view="system"><b>⚙</b><span>System</span></button></nav>
+</section>
+<section class="search-overlay hidden" id="searchOverlay"><div class="search-card"><input id="globalSearch" placeholder="Search SENSE"><button id="closeSearch">×</button><div id="searchResults"></div></div></section>
+<div class="toast" id="toast"></div>
+<script src="./senseos.js?v=0.2.2"></script>
+<script src="./romeo.js?v=0.2.2"></script>
+<script src="./romeo-mobile.js?v=0.2.2"></script>
 </body>
 </html>
