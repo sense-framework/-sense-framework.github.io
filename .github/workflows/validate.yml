@@ -25,6 +25,7 @@ jobs:
           assert '<title>SENSE</title>' in html
           assert 'id="appShell"' in html
           assert 'romeo.js' in loader
+          assert 'romeo-mobile.js' in loader
           assert '#/romeo' in Path('manifest.webmanifest').read_text()
           scripts=re.findall(r'<script[^>]*>(.*?)</script>',html,re.S)
           Path('/tmp/app.js').write_text(scripts[-1])
@@ -32,6 +33,7 @@ jobs:
           PY
           node --check /tmp/app.js
           node --check romeo.js
+          node --check romeo-mobile.js
           node --check sw.js
           test -s icon.svg
   api:
