@@ -21,9 +21,20 @@ jobs:
       - uses: actions/configure-pages@v5
       - name: Expand verified release bundle
         run: |
+          set -euo pipefail
           mkdir _site
           cat _bundle/frontend.part-* > /tmp/sense-frontend.tar.gz
           tar -xzf /tmp/sense-frontend.tar.gz -C _site
+          cp _patch/demo-admin.js _site/demo-admin.js
+          python3 - <<'PY'
+          from pathlib import Path
+          page = Path('_site/index.html')
+          html = page.read_text(encoding='utf-8')
+          tag = '<script src="./demo-admin.js"></script>'
+          if tag not in html:
+              html = html.replace('</body>', f'  {tag}\n</body>')
+          page.write_text(html, encoding='utf-8')
+          PY
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
