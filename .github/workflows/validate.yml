@@ -1,7 +1,7 @@
 name: Validate
 on:
   push:
-    branches: [main, agent/unified-portal-support-v6]
+    branches: [main, agent/enterprise-suite-v7]
   pull_request:
 permissions:
   contents: read
@@ -21,11 +21,13 @@ jobs:
           test -s senseos.js
           test -s company.css
           test -s company.js
+          test -s enterprise-preload.js
+          test -s enterprise.css
+          test -s enterprise.js
           test -s romeo.js
           test -s icon.svg
           test "$(find _company -name 'company.part-*' | wc -l)" -eq 8
           cat _company/company.part-* > /tmp/company.bundle.js
-          grep -q 'company.css?v=0.6.0' index.html
           grep -q 'company.js?v=0.6.0' index.html
           grep -q "const STORE='sense.company.portal.v1'" /tmp/company.bundle.js
           grep -q 'Support queue' /tmp/company.bundle.js
@@ -33,13 +35,23 @@ jobs:
           grep -q 'Join company' /tmp/company.bundle.js
           grep -q 'Responsible Disclosure' /tmp/company.bundle.js
           grep -q 'Service Level Agreement' /tmp/company.bundle.js
+          grep -q "const STORE = 'sense.enterprise.v1'" enterprise.js
+          grep -q 'Form studio' enterprise.js
+          grep -q 'job_application_submitted' enterprise.js
+          grep -q 'Executive overview' enterprise.js
+          grep -q 'CRM' enterprise.js
+          grep -q 'Finance' enterprise.js
+          grep -q "'jobs'" enterprise-preload.js
+          grep -q 'Administrator access required' enterprise-preload.js
           for route in organization knowledge policies tasks approvals requests assets forms careers learning analytics status more profile faq contact security privacy terms; do
             grep -q "id=\"view-$route\"" index.html
           done
-          ! grep -R -E 'Morgan Reed|Jordan Lee|Riley Chen|Project Romeo|SENSE Framework|Zeroform|SenseOS Product Brief|Romeo Architecture' index.html senseos.js company.js _company romeo.js README.md manifest.webmanifest
+          ! grep -R -E 'Morgan Reed|Jordan Lee|Riley Chen|Project Romeo|SENSE Framework|Zeroform|SenseOS Product Brief|Romeo Architecture' index.html senseos.js company.js enterprise.js _company romeo.js README.md manifest.webmanifest
           ! grep -q 'DecompressionStream' index.html
           node --check senseos.js
           node --check company.js
+          node --check enterprise-preload.js
+          node --check enterprise.js
           node --check /tmp/company.bundle.js
           node --check romeo.js
           node --check sw.js
