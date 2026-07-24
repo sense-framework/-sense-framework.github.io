@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: sense-web-os-api
+    runtime: node
+    rootDir: backend
+    buildCommand: tar -xzf ../_bundle/backend-src.tar.gz -C . && npm install --no-audit --no-fund
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB
+        value: sense_web_os
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://sense-framework.github.io
+      - key: TRUST_PROXY
+        value: "1"

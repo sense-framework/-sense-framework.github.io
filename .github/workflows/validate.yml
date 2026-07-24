@@ -1,0 +1,42 @@
+name: Validate
+on:
+  push:
+    branches: [main, agent/sense-web-os]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Expand client
+        run: |
+          mkdir client
+          cat _bundle/frontend.part-* > /tmp/sense-frontend.tar.gz
+          tar -xzf /tmp/sense-frontend.tar.gz -C client
+      - name: Validate client
+        run: |
+          node --check client/app.js
+          node --check client/config.js
+          node --check client/sw.js
+          for file in client/js/*.js; do node --check "$file"; done
+          node -e "JSON.parse(require('fs').readFileSync('client/manifest.webmanifest','utf8'))"
+          test -s client/index.html
+          test -s client/icons/icon.svg
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Expand API
+        run: tar -xzf _bundle/backend-src.tar.gz -C backend
+      - working-directory: backend
+        run: npm install --no-audit --no-fund
+      - working-directory: backend
+        run: npm test
