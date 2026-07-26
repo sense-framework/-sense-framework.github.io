@@ -268,9 +268,10 @@ function exportData(){
   setTimeout(()=>URL.revokeObjectURL(url),500);
 }
 function bind(){
-  setTimeout(()=>$('#boot').classList.add('done'),700);
-  $('#openAuth').onclick=()=>$('#auth').classList.remove('hidden');
-  $('#closeAuth').onclick=()=>$('#auth').classList.add('hidden');
+  setTimeout(()=>{
+    $('#boot').classList.add('done');
+    if($('#app').classList.contains('hidden'))$('#auth').classList.remove('hidden');
+  },700);
   $('#loginForm').onsubmit=event=>{event.preventDefault();window.SENSE_AUTH?.login?.()};
   $$('.nav-target').forEach(button=>button.addEventListener('click',()=>show(button.dataset.view)));
   $$('[data-create]').forEach(button=>button.onclick=()=>openCreate(button.dataset.create));
@@ -335,7 +336,7 @@ function bind(){
   });
   document.addEventListener('keydown',event=>{
     if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('#searchOverlay').classList.remove('hidden');$('#globalSearch').focus()}
-    if(event.key==='Escape'){$('#searchOverlay').classList.add('hidden');closeModal();$('#auth').classList.add('hidden')}
+    if(event.key==='Escape'){$('#searchOverlay').classList.add('hidden');closeModal()}
   });
   if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
