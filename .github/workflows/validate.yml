@@ -1,10 +1,13 @@
 name: Validate
+
 on:
   push:
-    branches: [main, agent/enterprise-suite-v7]
+    branches: [main]
   pull_request:
+
 permissions:
   contents: read
+
 jobs:
   client:
     runs-on: ubuntu-latest
@@ -13,70 +16,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Validate direct client
-        run: |
-          set -euo pipefail
-          test -s index.html
-          test -s senseos.css
-          test -s senseos.js
-          test -s company.css
-          test -s company.js
-          test -s enterprise-preload.js
-          test -s enterprise.css
-          test -s enterprise.js
-          test -s romeo.js
-          test -s icon.svg
-          test "$(find _company -name 'company.part-*' | wc -l)" -eq 8
-          cat _company/company.part-* > /tmp/company.bundle.js
-          python3 - <<'PY'
-          from pathlib import Path
-          source=Path('enterprise.js').read_text()
-          marker="document.addEventListener('click', event => {\n      const nav="
-          replacement="document.addEventListener('click', event => {\n      const formSelect=event.target.closest('[data-form-id]');if(formSelect){activeFormId=formSelect.dataset.formId;renderForms();return}\n      const nav="
-          assert marker in source
-          Path('/tmp/enterprise.runtime.js').write_text(source.replace(marker,replacement,1))
-          PY
-          grep -q 'company.js?v=0.6.0' index.html
-          grep -q "const STORE='sense.company.portal.v1'" /tmp/company.bundle.js
-          grep -q 'Support queue' /tmp/company.bundle.js
-          grep -q 'Create account' /tmp/company.bundle.js
-          grep -q 'Join company' /tmp/company.bundle.js
-          grep -q 'Responsible Disclosure' /tmp/company.bundle.js
-          grep -q 'Service Level Agreement' /tmp/company.bundle.js
-          grep -q "const STORE = 'sense.enterprise.v1'" enterprise.js
-          grep -q 'Form studio' enterprise.js
-          grep -q 'job_application_submitted' enterprise.js
-          grep -q 'Executive overview' enterprise.js
-          grep -q 'CRM' enterprise.js
-          grep -q 'Finance' enterprise.js
-          grep -q "'jobs'" enterprise-preload.js
-          grep -q 'Administrator access required' enterprise-preload.js
-          grep -q 'formSelect' /tmp/enterprise.runtime.js
-          for route in organization knowledge policies tasks approvals requests assets forms careers learning analytics status more profile faq contact security privacy terms; do
-            grep -q "id=\"view-$route\"" index.html
-          done
-          ! grep -R -E 'Morgan Reed|Jordan Lee|Riley Chen|Project Romeo|SENSE Framework|Zeroform|SenseOS Product Brief|Romeo Architecture' index.html senseos.js company.js enterprise.js _company romeo.js README.md manifest.webmanifest
-          ! grep -q 'DecompressionStream' index.html
-          node --check senseos.js
-          node --check company.js
-          node --check enterprise-preload.js
-          node --check enterprise.js
-          node --check /tmp/enterprise.runtime.js
-          node --check /tmp/company.bundle.js
-          node --check romeo.js
-          node --check sw.js
-          node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
   api:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Reconstruct API
-        run: |
-          cat _release/backend.part-* | base64 -d | tar -xz -C backend
-      - working-directory: backend
-        run: npm install --no-audit --no-fund
-      - working-directory: backend
-        run: npm test
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
