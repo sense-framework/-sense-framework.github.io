@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '1.0.2';
+  const VERSION = '1.0.3';
   const load = src => new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = src;
