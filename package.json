@@ -9,6 +9,6 @@
     "check": "node scripts/check.mjs"
   },
   "devDependencies": {
-    "vite": "^7.0.6"
+    "vite": "^8.1.5"
   }
 }
