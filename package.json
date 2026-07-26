@@ -1,0 +1,14 @@
+{
+  "name": "sense-platform-web",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "devDependencies": {
+    "vite": "^7.0.6"
+  }
+}
