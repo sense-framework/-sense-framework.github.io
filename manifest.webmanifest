@@ -13,8 +13,9 @@
     {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
   ],
   "shortcuts": [
-    {"name":"Support","short_name":"Support","url":"./#/public/support","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
+    {"name":"Shop","short_name":"Shop","url":"./#/store","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
+    {"name":"Memberships","short_name":"Members","url":"./#/memberships","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
     {"name":"Workspace","short_name":"Workspace","url":"./#/home","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]},
-    {"name":"More","short_name":"More","url":"./#/more","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]}
+    {"name":"Orders","short_name":"Orders","url":"./#/orders","icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml"}]}
   ]
 }
