@@ -1,4 +1,4 @@
-const CACHE='sense-platform-v1.0.2';
+const CACHE='sense-platform-v1.0.3';
 const ASSETS=['./','./index.html','./config.js','./senseos.css','./senseos.js','./platform.css','./platform.js','./platform-loader.js','./business-preload.js','./enterprise.css','./business.js','./manifest.webmanifest','./icon.svg','./romeo.js'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
