@@ -141,6 +141,7 @@ function renderAnalytics(){
   $('#analyticsGrid').innerHTML=metrics.map(([label,value])=>`<article class="glass metric-card"><small>${label}</small><strong>${value}</strong><div class="metric-line"><i style="width:${Math.min(100,value*8)}%"></i></div></article>`).join('');
 }
 function renderProfile(){
+  if(!$('#profileName'))return;
   $('#profileName').value=state.profile.name||'';
   $('#profileTitle').value=state.profile.title||'';
   $('#profileDepartment').value=state.profile.department||'';
@@ -302,7 +303,7 @@ function bind(){
     state.contact.unshift({id:uid(),name:$('#contactName').value.trim(),email:$('#contactEmail').value.trim(),message:$('#contactMessage').value.trim(),createdAt:new Date().toISOString()});
     audit('Contact submission created');event.target.reset();save();toast('Submitted');
   };
-  $('#profileForm').onsubmit=event=>{
+  if($('#profileForm'))$('#profileForm').onsubmit=event=>{
     event.preventDefault();
     state.profile={name:$('#profileName').value.trim(),title:$('#profileTitle').value.trim(),department:$('#profileDepartment').value.trim(),location:$('#profileLocation').value.trim(),bio:$('#profileBio').value.trim()};
     audit('Profile updated');save();toast('Saved');
