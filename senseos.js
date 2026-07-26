@@ -18,6 +18,7 @@ const titles = {
   policies:'Policies', tasks:'Tasks', approvals:'Approvals', requests:'Requests', assets:'Assets',
   forms:'Forms', careers:'Careers', learning:'Learning', analytics:'Analytics', status:'Status',
   ai:'AI', notifications:'Notifications', more:'More', profile:'Profile', admin:'Administration',
+  store:'Shop', memberships:'Memberships', orders:'Orders',
   faq:'FAQ', contact:'Contact', security:'Security', privacy:'Privacy', terms:'Terms', system:'System'
 };
 let state = load();
@@ -38,7 +39,11 @@ function load(){
     };
   }catch{return clone(EMPTY)}
 }
-function save(){localStorage.setItem(STORE,JSON.stringify(state));renderAll()}
+function save(){
+  localStorage.setItem(STORE,JSON.stringify(state));
+  renderAll();
+  window.dispatchEvent(new CustomEvent('sense:workspace-change',{detail:{workspace:state}}));
+}
 function uid(){return `${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`}
 function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function time(value){
@@ -60,15 +65,26 @@ function show(view,replace=false){
     if(replace)history.replaceState(null,'',hash);
     else history.pushState(null,'',hash);
   }
+  window.dispatchEvent(new CustomEvent('sense:route',{detail:{view}}));
 }
 function openApp(){
-  sessionStorage.setItem('sense.preview','1');
   $('#landing').classList.add('hidden');
   $('#auth').classList.add('hidden');
   $('#app').classList.remove('hidden');
   window.dispatchEvent(new Event('sense:open'));
-  const route=location.hash.replace(/^#\//,'');
+  const route=location.hash.replace(/^#\//,'').split('?')[0];
   show(titles[route]?route:'home',true);
+}
+function hydrate(value){
+  if(!value||typeof value!=='object')return;
+  state={
+    ...clone(EMPTY),
+    ...value,
+    documents:{...EMPTY.documents,...(value.documents||{})},
+    profile:{...EMPTY.profile,...(value.profile||{})}
+  };
+  localStorage.setItem(STORE,JSON.stringify(state));
+  renderAll();
 }
 function updateCounts(){
   $$('[data-count]').forEach(node=>{
@@ -140,6 +156,7 @@ function renderDocuments(){
 }
 function renderAdmin(){
   const root=$('#auditList');
+  if(!root)return;
   root.innerHTML=state.audit.length?state.audit.map(item=>`<div class="audit-row"><b>${esc(item.action)}</b><small>${time(item.at)}</small></div>`).join(''):empty('◆','No audit entries');
 }
 function renderMessages(){
@@ -254,8 +271,7 @@ function bind(){
   setTimeout(()=>$('#boot').classList.add('done'),700);
   $('#openAuth').onclick=()=>$('#auth').classList.remove('hidden');
   $('#closeAuth').onclick=()=>$('#auth').classList.add('hidden');
-  $('#preview').onclick=openApp;
-  $('#loginForm').onsubmit=event=>{event.preventDefault();toast('Backend not connected')};
+  $('#loginForm').onsubmit=event=>{event.preventDefault();window.SENSE_AUTH?.login?.()};
   $$('.nav-target').forEach(button=>button.addEventListener('click',()=>show(button.dataset.view)));
   $$('[data-create]').forEach(button=>button.onclick=()=>openCreate(button.dataset.create));
   $('#closeModal').onclick=closeModal;
@@ -263,7 +279,7 @@ function bind(){
   $('#uploadFile').onclick=()=>$('#filePicker').click();
   $('#filePicker').onchange=event=>{
     [...event.target.files].forEach(file=>state.files.unshift({id:uid(),name:file.name,type:file.type||'File',size:file.size}));
-    if(event.target.files.length){audit(`${event.target.files.length} file record(s) added`);save();toast('Added locally')}
+    if(event.target.files.length){audit(`${event.target.files.length} file record(s) added`);save();toast('Added')}
     event.target.value='';
   };
   $('#messageForm').onsubmit=event=>{
@@ -273,17 +289,17 @@ function bind(){
     state.conversations.find(item=>item.id===activeConversation).messages.push({id:uid(),text,me:true,at:new Date().toISOString()});
     input.value='';save();
   };
-  $('#broadcastForm').onsubmit=event=>{
+  if($('#broadcastForm'))$('#broadcastForm').onsubmit=event=>{
     event.preventDefault();
     const title=$('#broadcastTitle').value.trim(),body=$('#broadcastBody').value.trim();
     state.broadcasts.unshift({id:uid(),title,body,createdAt:new Date().toISOString()});
     state.notifications.unshift({id:uid(),title,body,createdAt:new Date().toISOString()});
-    audit('Broadcast created');event.target.reset();save();toast('Saved locally');
+    audit('Broadcast created');event.target.reset();save();toast('Saved');
   };
   $('#contactForm').onsubmit=event=>{
     event.preventDefault();
     state.contact.unshift({id:uid(),name:$('#contactName').value.trim(),email:$('#contactEmail').value.trim(),message:$('#contactMessage').value.trim(),createdAt:new Date().toISOString()});
-    audit('Contact submission created');event.target.reset();save();toast('Submitted locally');
+    audit('Contact submission created');event.target.reset();save();toast('Submitted');
   };
   $('#profileForm').onsubmit=event=>{
     event.preventDefault();
@@ -296,8 +312,8 @@ function bind(){
     if(value)localStorage.setItem('sense.api',value);else localStorage.removeItem('sense.api');
     toast('Saved');
   };
-  $('#apiEndpoint').value=localStorage.getItem('sense.api')||'';
-  $('#logout').onclick=()=>{sessionStorage.removeItem('sense.preview');location.hash='';location.reload()};
+  $('#apiEndpoint').value=localStorage.getItem('sense.api')||window.SENSE_CONFIG?.apiUrl||'';
+  $('#logout').onclick=()=>window.SENSE_AUTH?.logout?.();
   $('#exportData').onclick=exportData;
   $('#resetData').onclick=()=>{
     if(confirm('Reset all local workspace data?')){state=clone(EMPTY);localStorage.removeItem(STORE);renderAll();toast('Local data reset')}
@@ -305,7 +321,7 @@ function bind(){
   $('#searchButton').onclick=()=>{$('#searchOverlay').classList.remove('hidden');$('#globalSearch').focus()};
   $('#closeSearch').onclick=()=>$('#searchOverlay').classList.add('hidden');
   $('#globalSearch').oninput=event=>renderSearch(event.target.value);
-  $('#aiForm').onsubmit=event=>{event.preventDefault();if($('#aiInput').value.trim())toast('Backend not connected');$('#aiInput').value=''};
+  $('#aiForm').onsubmit=event=>{event.preventDefault();if($('#aiInput').value.trim())toast('AI service is not configured');$('#aiInput').value=''};
   $('#openRomeoFromAI').onclick=()=>window.SENSE_ROMEO?.open();
   $('#installButton').onclick=async()=>{
     if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null}
@@ -314,7 +330,7 @@ function bind(){
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();deferredInstall=event});
   window.addEventListener('hashchange',()=>{
     if($('#app').classList.contains('hidden'))return;
-    const route=location.hash.replace(/^#\//,'');
+    const route=location.hash.replace(/^#\//,'').split('?')[0];
     if(titles[route])show(route,true);
   });
   document.addEventListener('keydown',event=>{
@@ -322,8 +338,8 @@ function bind(){
     if(event.key==='Escape'){$('#searchOverlay').classList.add('hidden');closeModal();$('#auth').classList.add('hidden')}
   });
   if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
-  if(sessionStorage.getItem('sense.preview')==='1')openApp();
 }
-function init(){renderAll();bind()}
+window.SENSE_APP={open:openApp,show,hydrate,toast,state:()=>clone(state)};
+function init(){renderAll();bind();window.dispatchEvent(new Event('sense:ready'))}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
