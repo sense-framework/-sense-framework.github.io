@@ -29,7 +29,7 @@ let toastTimer;
 function clone(value){return JSON.parse(JSON.stringify(value))}
 function load(){
   try{
-    const value=JSON.parse(localStorage.getItem(STORE)||'null');
+    const value=JSON.parse(sessionStorage.getItem(STORE)||'null');
     if(!value||typeof value!=='object') return clone(EMPTY);
     return {
       ...clone(EMPTY),
@@ -40,7 +40,7 @@ function load(){
   }catch{return clone(EMPTY)}
 }
 function save(){
-  localStorage.setItem(STORE,JSON.stringify(state));
+  sessionStorage.setItem(STORE,JSON.stringify(state));
   renderAll();
   window.dispatchEvent(new CustomEvent('sense:workspace-change',{detail:{workspace:state}}));
 }
@@ -83,7 +83,7 @@ function hydrate(value){
     documents:{...EMPTY.documents,...(value.documents||{})},
     profile:{...EMPTY.profile,...(value.profile||{})}
   };
-  localStorage.setItem(STORE,JSON.stringify(state));
+  sessionStorage.setItem(STORE,JSON.stringify(state));
   renderAll();
 }
 function updateCounts(){
@@ -309,16 +309,11 @@ function bind(){
     audit('Profile updated');save();toast('Saved');
   };
   $('#clearNotifications').onclick=()=>{state.notifications=[];save()};
-  $('#saveApi').onclick=()=>{
-    const value=$('#apiEndpoint').value.trim();
-    if(value)localStorage.setItem('sense.api',value);else localStorage.removeItem('sense.api');
-    toast('Saved');
-  };
-  $('#apiEndpoint').value=localStorage.getItem('sense.api')||window.SENSE_CONFIG?.apiUrl||'';
+  $('#apiEndpoint').value=window.SENSE_CONFIG?.apiUrl||'Not configured';
   $('#logout').onclick=()=>window.SENSE_AUTH?.logout?.();
   $('#exportData').onclick=exportData;
   $('#resetData').onclick=()=>{
-    if(confirm('Reset all local workspace data?')){state=clone(EMPTY);localStorage.removeItem(STORE);renderAll();toast('Local data reset')}
+    if(confirm('Reset all session workspace data?')){state=clone(EMPTY);sessionStorage.removeItem(STORE);renderAll();toast('Session data reset')}
   };
   $('#searchButton').onclick=()=>{$('#searchOverlay').classList.remove('hidden');$('#globalSearch').focus()};
   $('#closeSearch').onclick=()=>$('#searchOverlay').classList.add('hidden');

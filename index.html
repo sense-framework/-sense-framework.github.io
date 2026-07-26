@@ -7,12 +7,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SENSE">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sense-platform-api.onrender.com; form-action 'self'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests">
+<meta name="referrer" content="no-referrer">
 <title>SENSE</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./senseos.css?v=1.1.0">
-<link rel="stylesheet" href="./enterprise.css?v=1.1.0">
-<link rel="stylesheet" href="./platform.css?v=1.1.0">
+<link rel="stylesheet" href="./senseos.css?v=1.2.0">
+<link rel="stylesheet" href="./enterprise.css?v=1.2.0">
+<link rel="stylesheet" href="./platform.css?v=1.2.0">
 </head>
 <body>
 <div class="boot" id="boot" aria-hidden="true"><img src="./icon.svg" alt=""><div class="wordmark">SENSE</div><i></i></div>
@@ -33,14 +35,17 @@
     <form id="loginForm" class="account-form">
       <label>Email<input type="email" id="email" autocomplete="email" required></label>
       <label>Password<input type="password" id="password" autocomplete="current-password" required></label>
+      <label class="hidden" id="loginMfa">Authenticator or recovery code<input id="loginCode" autocomplete="one-time-code" maxlength="32"></label>
       <button class="primary" type="submit">Sign in</button>
+      <div class="auth-assist"><button class="text-button" id="forgotPassword" type="button">Forgot password?</button><button class="text-button" id="resendVerification" type="button">Resend verification</button></div>
     </form>
     <form id="registerForm" class="account-form hidden">
       <label>Name<input type="text" id="registerName" autocomplete="name" minlength="2" maxlength="60" required></label>
       <label>Username<input type="text" id="registerUsername" autocomplete="username" pattern="[a-zA-Z0-9_.-]{3,24}" required></label>
       <label>Email<input type="email" id="registerEmail" autocomplete="email" required></label>
-      <label>Password<input type="password" id="registerPassword" autocomplete="new-password" minlength="12" required></label>
-      <small class="form-help">Use 12+ characters with uppercase, lowercase, a number, and a symbol.</small>
+      <label>Password<input type="password" id="registerPassword" autocomplete="new-password" minlength="15" maxlength="72" required></label>
+      <small class="form-help">Use a unique passphrase of at least 15 characters. Avoid your name, username, or email.</small>
+      <details class="owner-setup"><summary>Setting up the first owner?</summary><label>Owner setup key<input type="password" id="ownerSetupToken" autocomplete="off" maxlength="256"></label></details>
       <button class="primary" type="submit">Create account</button>
     </form>
     <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
@@ -182,7 +187,8 @@
       <header class="page-head"><h1>System</h1></header>
       <div class="settings-grid">
         <article class="glass panel"><h2>Account</h2><button class="secondary nav-target" data-view="profile">Profile</button><button class="secondary" id="logout">Sign out</button></article>
-        <article class="glass panel"><h2>Platform connection</h2><input id="apiEndpoint" placeholder="https://api.example.com"><button class="primary" id="saveApi">Save endpoint</button></article>
+        <article class="glass panel" id="accountSecurity"><h2>Account security</h2><p class="page-subtitle">Loading protected sessions…</p></article>
+        <article class="glass panel"><h2>Platform connection</h2><input id="apiEndpoint" aria-label="Platform API" readonly><small class="form-help">Locked by the production build to prevent endpoint substitution.</small></article>
         <article class="glass panel"><h2>Application</h2><button class="secondary" id="installButton">Install</button></article>
         <article class="glass panel link-list"><h2>Pages</h2><button class="nav-target" data-view="faq">FAQ</button><button class="nav-target" data-view="contact">Contact</button><button class="nav-target" data-view="security">Security</button><button class="nav-target" data-view="privacy">Privacy</button><button class="nav-target" data-view="terms">Terms</button></article>
         <article class="glass panel"><h2>Data</h2><button class="secondary" id="exportData">Export local data</button><button class="secondary" id="resetData">Reset local data</button></article>
@@ -203,10 +209,10 @@
 <section class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="glass modal-card"><button class="icon-button modal-close" id="closeModal">×</button><div id="modalBody"></div></div></section>
 <div class="toast" id="toast"></div>
 
-<script src="./config.js?v=1.1.0"></script>
-<script src="./senseos.js?v=1.1.0"></script>
-<script src="./romeo.js?v=1.1.0"></script>
-<script src="./platform.js?v=1.1.0"></script>
-<script src="./platform-loader.js?v=1.1.0"></script>
+<script src="./config.js?v=1.2.0"></script>
+<script src="./senseos.js?v=1.2.0"></script>
+<script src="./romeo.js?v=1.2.0"></script>
+<script src="./platform.js?v=1.2.0"></script>
+<script src="./platform-loader.js?v=1.2.0"></script>
 </body>
 </html>

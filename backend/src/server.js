@@ -3,10 +3,27 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { MongoClient, ObjectId } from 'mongodb';
 import { z } from 'zod';
+import {
+  csrfTokenFor,
+  decryptSecret,
+  encryptSecret,
+  generateRecoveryCodes,
+  generateTotpSecret,
+  hashPassword,
+  hmac256,
+  normalizeRecoveryCode,
+  parseCookies,
+  passwordIssues,
+  randomToken,
+  recoveryCodeHash,
+  safeEqual,
+  serializeCookie,
+  sha256,
+  verifyPassword,
+  verifyTotp
+} from './security.js';
 import {
   createCoinbaseCheckout,
   refundCoinbaseCheckout,
@@ -26,8 +43,15 @@ const env = {
   mongoUri: process.env.MONGODB_URI || '',
   dbName: process.env.MONGODB_DB || 'sense_platform',
   jwtSecret: process.env.JWT_SECRET || '',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '12h',
+  mfaEncryptionKey: process.env.MFA_ENCRYPTION_KEY || '',
+  requireAdminMfa: String(process.env.REQUIRE_ADMIN_MFA || 'true').toLowerCase() !== 'false',
+  sessionHours: Math.max(1, Math.min(Number(process.env.SESSION_HOURS || 12), 24)),
+  cookieSameSite: String(process.env.COOKIE_SAME_SITE || (process.env.NODE_ENV === 'production' ? 'None' : 'Lax')),
   adminEmail: String(process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
+  ownerBootstrapToken: process.env.OWNER_BOOTSTRAP_TOKEN || '',
+  requireEmailVerification: String(process.env.REQUIRE_EMAIL_VERIFICATION || (process.env.NODE_ENV === 'production' ? 'true' : 'false')).toLowerCase() !== 'false',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  emailFrom: String(process.env.EMAIL_FROM || '').trim(),
   origins: String(process.env.CORS_ORIGINS || 'http://localhost:5500').split(',').map(value => value.trim()).filter(Boolean),
   frontendUrl: String(process.env.FRONTEND_URL || 'http://localhost:5500').replace(/\/$/, ''),
   trustProxy: Number(process.env.TRUST_PROXY || 1),
@@ -41,9 +65,28 @@ const env = {
 };
 env.stripeEnabled = Boolean(env.stripeSecretKey);
 env.coinbaseEnabled = Boolean(env.coinbaseKeyName && env.coinbaseKeySecret);
+env.emailEnabled = Boolean(env.resendApiKey && env.emailFrom);
 
 if (!env.mongoUri) throw new Error('MONGODB_URI is required');
 if (env.jwtSecret.length < 32) throw new Error('JWT_SECRET must contain at least 32 characters');
+if (env.mfaEncryptionKey.length < 32) throw new Error('MFA_ENCRYPTION_KEY must contain at least 32 characters');
+if (env.nodeEnv === 'production' && safeEqual(env.jwtSecret, env.mfaEncryptionKey)) throw new Error('JWT_SECRET and MFA_ENCRYPTION_KEY must be different');
+if (env.ownerBootstrapToken && [env.jwtSecret, env.mfaEncryptionKey].some(secret => safeEqual(secret, env.ownerBootstrapToken))) {
+  throw new Error('OWNER_BOOTSTRAP_TOKEN must be different from application secrets');
+}
+if (!Number.isFinite(env.sessionHours)) throw new Error('SESSION_HOURS must be a number');
+if (!['Strict', 'Lax', 'None'].includes(env.cookieSameSite)) throw new Error('COOKIE_SAME_SITE must be Strict, Lax, or None');
+if (env.origins.includes('*')) throw new Error('Wildcard CORS origins are forbidden');
+for (const origin of env.origins) {
+  const parsed = new URL(origin);
+  if (parsed.origin !== origin) throw new Error('CORS_ORIGINS entries must be exact origins without paths');
+  if (env.nodeEnv === 'production' && parsed.protocol !== 'https:') throw new Error('Production CORS origins must use HTTPS');
+}
+const parsedFrontendUrl = new URL(env.frontendUrl);
+if (env.nodeEnv === 'production' && parsedFrontendUrl.protocol !== 'https:') throw new Error('FRONTEND_URL must use HTTPS in production');
+if (parsedFrontendUrl.username || parsedFrontendUrl.password || parsedFrontendUrl.search || parsedFrontendUrl.hash) {
+  throw new Error('FRONTEND_URL cannot contain credentials, a query, or a fragment');
+}
 
 const client = new MongoClient(env.mongoUri, {
   maxPoolSize: 40,
@@ -67,11 +110,17 @@ const settings = db.collection('settings');
 const workspaceStates = db.collection('workspace_states');
 const profileUpdates = db.collection('profile_updates');
 const connections = db.collection('connections');
+const sessions = db.collection('sessions');
+const webhookEvents = db.collection('webhook_events');
+const authAttempts = db.collection('auth_attempts');
+const refundRequests = db.collection('refund_requests');
+const authTokens = db.collection('auth_tokens');
 
 await Promise.all([
   users.createIndex({ email: 1 }, { unique: true }),
   users.createIndex({ username: 1 }, { unique: true }),
   users.createIndex({ status: 1, displayName: 1 }),
+  users.createIndex({ verificationExpiresAt: 1 }, { expireAfterSeconds: 0 }),
   messages.createIndex({ senderId: 1, recipientId: 1, createdAt: -1 }),
   messages.createIndex({ recipientId: 1, readAt: 1, createdAt: -1 }),
   messages.createIndex({ body: 'text' }),
@@ -96,22 +145,31 @@ await Promise.all([
   connections.createIndex({ pairKey: 1 }, { unique: true }),
   connections.createIndex({ requesterId: 1, status: 1, updatedAt: -1 }),
   connections.createIndex({ recipientId: 1, status: 1, updatedAt: -1 }),
-  settings.createIndex({ key: 1 }, { unique: true })
+  settings.createIndex({ key: 1 }, { unique: true }),
+  sessions.createIndex({ tokenHash: 1 }, { unique: true }),
+  sessions.createIndex({ userId: 1, createdAt: -1 }),
+  sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+  webhookEvents.createIndex({ provider: 1, eventId: 1 }, { unique: true }),
+  webhookEvents.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+  authAttempts.createIndex({ key: 1 }, { unique: true }),
+  authAttempts.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+  refundRequests.createIndex({ idempotencyKey: 1 }, { unique: true }),
+  refundRequests.createIndex({ orderId: 1, createdAt: -1 }),
+  authTokens.createIndex({ tokenHash: 1 }, { unique: true }),
+  authTokens.createIndex({ userId: 1, type: 1 }, { unique: true }),
+  authTokens.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 ]);
 await users.updateMany({ role: 'user' }, { $set: { role: 'member', updatedAt: new Date() } });
-if (env.adminEmail) {
-  await users.updateOne(
-    { email: env.adminEmail, role: { $ne: 'owner' } },
-    { $set: { role: 'owner', updatedAt: new Date() }, $inc: { tokenVersion: 1 } }
-  );
-}
 
 const app = express();
 app.set('trust proxy', env.trustProxy);
+app.set('query parser', 'simple');
 app.disable('x-powered-by');
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  contentSecurityPolicy: false
+  contentSecurityPolicy: false,
+  hsts: env.nodeEnv === 'production' ? { maxAge: 63_072_000, includeSubDomains: true, preload: true } : false,
+  referrerPolicy: { policy: 'no-referrer' }
 }));
 app.use(cors({
   origin(origin, callback) {
@@ -119,22 +177,35 @@ app.use(cors({
     return callback(new Error('Origin is not allowed'));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature', 'X-Hook0-Signature'],
-  exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+  allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Idempotency-Key', 'Stripe-Signature', 'X-Hook0-Signature'],
+  exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'X-Request-ID'],
+  credentials: true,
   maxAge: 86_400
 }));
+app.use((req, res, next) => {
+  const requestId = String(req.get('x-request-id') || randomToken(12)).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || randomToken(12);
+  req.requestId = requestId;
+  res.set({
+    'X-Request-ID': requestId,
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(self)',
+    'X-Robots-Tag': 'noindex, nofollow, noarchive',
+    'Cache-Control': req.path === '/health' || req.path === '/api/config' ? 'no-cache' : 'no-store'
+  });
+  next();
+});
 app.use(rateLimit({
   windowMs: 60_000,
-  limit: 240,
+  limit: 180,
   standardHeaders: true,
   legacyHeaders: false,
   skip: request => request.path === '/health'
 }));
 
-const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
-const checkoutLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
+const checkoutLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 12, standardHeaders: true, legacyHeaders: false });
 const messageLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
 const analyticsLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
+const adminLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: true, legacyHeaders: false });
 
 const objectId = value => ObjectId.isValid(value) ? new ObjectId(value) : null;
 const escapeRegex = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -146,7 +217,7 @@ const id = value => value?._id?.toString?.() || value?.toString?.() || null;
 
 const ROLE_PERMISSIONS = {
   owner: ['*'],
-  admin: ['users', 'catalog', 'orders', 'memberships', 'messages', 'analytics', 'settings', 'audit', 'broadcasts'],
+  admin: ['users', 'catalog', 'orders', 'refunds', 'memberships', 'messages', 'analytics', 'settings', 'audit', 'broadcasts'],
   support: ['orders', 'memberships', 'messages', 'users'],
   editor: ['catalog', 'settings'],
   analyst: ['analytics', 'orders', 'memberships'],
@@ -184,6 +255,7 @@ const publicUser = user => ({
   username: user.username,
   role: user.role,
   status: user.status,
+  mfaEnabled: Boolean(user.mfa?.enabled),
   avatarUrl: user.profile?.avatarUrl || '',
   headline: user.profile?.headline || '',
   createdAt: user.createdAt,
@@ -243,11 +315,63 @@ const publicOrder = order => ({
   checkoutUrl: order.status === 'pending' ? order.checkoutUrl || null : null
 });
 
-const signToken = user => jwt.sign(
-  { sub: id(user), role: user.role, ver: user.tokenVersion || 0 },
-  env.jwtSecret,
-  { expiresIn: env.jwtExpiresIn, issuer: 'sense-platform', audience: 'sense-web' }
-);
+const SESSION_COOKIE = env.nodeEnv === 'production' ? '__Host-sense_session' : 'sense_session';
+const SESSION_SECONDS = env.sessionHours * 60 * 60;
+const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const dummyPasswordHash = await hashPassword('Timing defense password that is never accepted!');
+
+function sessionCookie(token, maxAge = SESSION_SECONDS) {
+  return serializeCookie(SESSION_COOKIE, token, {
+    maxAge,
+    httpOnly: true,
+    secure: env.nodeEnv === 'production',
+    sameSite: env.cookieSameSite,
+    path: '/'
+  });
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', sessionCookie('', 0));
+}
+
+function requestFingerprint(req) {
+  return {
+    ipHash: hmac256(env.jwtSecret, `ip:${req.ip || ''}`),
+    userAgentHash: hmac256(env.jwtSecret, `ua:${req.get('user-agent') || ''}`),
+    device: cleanText(req.get('user-agent') || 'Unknown device', 180)
+  };
+}
+
+async function issueSession(user, req, res, elevated = true) {
+  const token = randomToken(32);
+  const createdAt = now();
+  const expiresAt = new Date(createdAt.getTime() + SESSION_SECONDS * 1000);
+  const session = {
+    tokenHash: sha256(token),
+    userId: user._id,
+    tokenVersion: user.tokenVersion || 0,
+    ...requestFingerprint(req),
+    createdAt,
+    lastSeenAt: createdAt,
+    expiresAt,
+    elevatedUntil: elevated ? new Date(createdAt.getTime() + 10 * 60_000) : createdAt
+  };
+  await sessions.insertOne(session);
+  const stale = await sessions.find({ userId: user._id }).sort({ createdAt: -1 }).skip(10).project({ _id: 1 }).toArray();
+  if (stale.length) await sessions.deleteMany({ _id: { $in: stale.map(item => item._id) } });
+  res.setHeader('Set-Cookie', sessionCookie(token));
+  return { csrfToken: csrfTokenFor(env.jwtSecret, token), sessionId: id(session) };
+}
+
+function requestSessionToken(req) {
+  return parseCookies(req.get('cookie') || '')[SESSION_COOKIE] || '';
+}
+
+function requireAllowedOrigin(req, res, next) {
+  const origin = req.get('origin') || '';
+  if (!env.origins.includes(origin)) return res.status(403).json({ error: 'Trusted origin required' });
+  return next();
+}
 
 async function audit(action, actor, target = null, metadata = {}) {
   await auditEvents.insertOne({
@@ -263,17 +387,32 @@ async function audit(action, actor, target = null, metadata = {}) {
 
 async function requireAuth(req, res, next) {
   try {
-    const header = req.get('authorization') || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    const token = requestSessionToken(req);
     if (!token) return res.status(401).json({ error: 'Authentication required' });
-    const decoded = jwt.verify(token, env.jwtSecret, { issuer: 'sense-platform', audience: 'sense-web' });
-    const userId = objectId(decoded.sub);
-    if (!userId) return res.status(401).json({ error: 'Invalid session' });
-    const user = await users.findOne({ _id: userId });
-    if (!user || user.status !== 'active' || (user.tokenVersion || 0) !== (decoded.ver || 0)) {
+    const session = await sessions.findOne({ tokenHash: sha256(token), expiresAt: { $gt: now() } });
+    if (!session) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+    const user = await users.findOne({ _id: session.userId });
+    if (!user || user.status !== 'active' || (user.tokenVersion || 0) !== (session.tokenVersion || 0)) {
+      await sessions.deleteOne({ _id: session._id });
+      clearSessionCookie(res);
       return res.status(401).json({ error: 'Session is no longer active' });
     }
+    if (unsafeMethods.has(req.method)) {
+      const origin = req.get('origin') || '';
+      const suppliedCsrf = req.get('x-csrf-token') || '';
+      if (!env.origins.includes(origin) || !safeEqual(suppliedCsrf, csrfTokenFor(env.jwtSecret, token))) {
+        return res.status(403).json({ error: 'Request verification failed' });
+      }
+    }
     req.user = user;
+    req.authSession = session;
+    req.sessionToken = token;
+    if (!session.lastSeenAt || Date.now() - session.lastSeenAt.getTime() > 5 * 60_000) {
+      sessions.updateOne({ _id: session._id }, { $set: { lastSeenAt: now() } }).catch(() => {});
+    }
     users.updateOne({ _id: user._id }, { $set: { lastSeenAt: now() } }).catch(() => {});
     return next();
   } catch {
@@ -281,13 +420,12 @@ async function requireAuth(req, res, next) {
   }
 }
 
-function optionalAuth(req, _res, next) {
-  const header = req.get('authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+async function optionalAuth(req, _res, next) {
+  const token = requestSessionToken(req);
   if (!token) return next();
   try {
-    const decoded = jwt.verify(token, env.jwtSecret, { issuer: 'sense-platform', audience: 'sense-web' });
-    req.optionalUserId = objectId(decoded.sub);
+    const session = await sessions.findOne({ tokenHash: sha256(token), expiresAt: { $gt: now() } });
+    req.optionalUserId = session?.userId || null;
   } catch {
     req.optionalUserId = null;
   }
@@ -300,21 +438,60 @@ function requirePermission(permission) {
     if (!allowed.includes('*') && !allowed.includes(permission)) {
       return res.status(403).json({ error: 'Insufficient permission' });
     }
+    if (env.requireAdminMfa && ['owner', 'admin'].includes(req.user?.role) && !req.user.mfa?.enabled) {
+      return res.status(403).json({ error: 'Multi-factor authentication enrollment is required for this account', code: 'MFA_ENROLLMENT_REQUIRED' });
+    }
     return next();
   };
+}
+
+function requireRecentAuth(req, res, next) {
+  if (!req.authSession?.elevatedUntil || req.authSession.elevatedUntil <= now()) {
+    return res.status(428).json({ error: 'Confirm your password to continue', code: 'REAUTH_REQUIRED' });
+  }
+  return next();
+}
+
+async function revokeUserSessions(userId, exceptSessionId = null) {
+  const filter = { userId };
+  if (exceptSessionId) filter._id = { $ne: exceptSessionId };
+  await sessions.deleteMany(filter);
 }
 
 const registerSchema = z.object({
   displayName: z.string().trim().min(2).max(60),
   username: z.string().trim().toLowerCase().regex(/^[a-z0-9_.-]{3,24}$/),
   email: z.string().trim().toLowerCase().email().max(254),
-  password: z.string().min(12).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/[0-9]/).regex(/[^A-Za-z0-9]/)
+  password: z.string().min(15).max(128),
+  ownerSetupToken: z.string().max(256).optional()
 });
-const loginSchema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(128) });
+const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(1).max(128),
+  code: z.string().trim().max(32).optional()
+});
+const reauthSchema = z.object({
+  password: z.string().min(1).max(128),
+  code: z.string().trim().max(32).optional()
+});
+const emailSchema = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
+const authTokenSchema = z.object({ token: z.string().min(32).max(256) });
+const passwordResetSchema = z.object({
+  token: z.string().min(32).max(256),
+  password: z.string().min(15).max(128)
+});
 const messageSchema = z.object({ body: z.string().trim().min(1).max(4000) });
 const optionalUrl = z.string().trim().url().or(z.literal('')).refine(
-  value => !value || /^https?:\/\//i.test(value),
-  'URL must use http or https'
+  value => {
+    if (!value) return true;
+    try {
+      const url = new URL(value);
+      return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  },
+  'URL must use http or https and cannot contain credentials'
 );
 const profileSchema = z.object({
   displayName: z.string().trim().min(2).max(60),
@@ -358,7 +535,7 @@ const productSchema = z.object({
   status: z.enum(['draft', 'active', 'archived']).default('draft'),
   priceCents: z.number().int().min(0).max(100_000_000),
   currency: z.string().trim().length(3).transform(value => value.toUpperCase()).default(env.paymentCurrency),
-  imageUrl: z.string().trim().url().or(z.literal('')).default(''),
+  imageUrl: optionalUrl.default(''),
   tags: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
   featured: z.boolean().default(false),
   sortOrder: z.number().int().min(0).max(100_000).default(100),
@@ -565,9 +742,156 @@ async function markOrderPaid(orderId, providerData = {}) {
   return true;
 }
 
+async function claimWebhookEvent(provider, eventId) {
+  try {
+    const createdAt = now();
+    await webhookEvents.insertOne({
+      provider,
+      eventId,
+      status: 'processing',
+      createdAt,
+      expiresAt: new Date(createdAt.getTime() + 30 * 24 * 60 * 60_000)
+    });
+    return true;
+  } catch (error) {
+    if (error?.code === 11000) {
+      const staleBefore = new Date(Date.now() - 5 * 60_000);
+      const reclaimed = await webhookEvents.updateOne(
+        { provider, eventId, status: 'processing', createdAt: { $lt: staleBefore } },
+        { $set: { createdAt: now(), reclaimedAt: now() }, $inc: { retryCount: 1 } }
+      );
+      return reclaimed.modifiedCount === 1;
+    }
+    throw error;
+  }
+}
+
+async function completeWebhookEvent(provider, eventId) {
+  await webhookEvents.updateOne({ provider, eventId }, { $set: { status: 'processed', processedAt: now() } });
+}
+
+async function recordFailedLogin(user) {
+  const windowMs = 15 * 60_000;
+  const bucket = Math.floor(Date.now() / windowMs);
+  const key = sha256(`${id(user)}:${bucket}`);
+  const attempt = await authAttempts.findOneAndUpdate(
+    { key },
+    {
+      $inc: { count: 1 },
+      $setOnInsert: { userId: user._id, createdAt: now(), expiresAt: new Date((bucket + 2) * windowMs) }
+    },
+    { upsert: true, returnDocument: 'after' }
+  );
+  const failedLoginCount = attempt?.count || 1;
+  const update = {
+    'security.failedLoginCount': failedLoginCount,
+    'security.lastFailedLoginAt': now()
+  };
+  if (failedLoginCount >= 10) update['security.lockedUntil'] = new Date(Date.now() + 15 * 60_000);
+  await users.updateOne({ _id: user._id }, { $set: update });
+  await audit('security.login_failed', null, user._id, { locked: failedLoginCount >= 10 });
+}
+
+async function verifySecondFactor(user, code) {
+  if (!user.mfa?.enabled || !user.mfa.encryptedSecret) return false;
+  const supplied = String(code || '').trim();
+  try {
+    const secret = decryptSecret(user.mfa.encryptedSecret, env.mfaEncryptionKey);
+    if (verifyTotp(secret, supplied)) return true;
+  } catch {
+    return false;
+  }
+  const normalized = normalizeRecoveryCode(supplied);
+  if (normalized.length !== 16) return false;
+  const hash = recoveryCodeHash(env.jwtSecret, normalized);
+  const matched = (user.mfa.recoveryCodeHashes || []).find(candidate => safeEqual(candidate, hash));
+  if (!matched) return false;
+  const consumed = await users.updateOne(
+    { _id: user._id, 'mfa.recoveryCodeHashes': matched },
+    { $pull: { 'mfa.recoveryCodeHashes': matched }, $set: { 'mfa.recoveryCodeUsedAt': now() } }
+  );
+  return consumed.modifiedCount === 1;
+}
+
+const emailEscape = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+}[character]));
+
+function frontendTokenUrl(parameter, token) {
+  const url = new URL(env.frontendUrl);
+  url.hash = `/auth/${parameter}?token=${encodeURIComponent(token)}`;
+  return url.toString();
+}
+
+async function sendEmail({ to, subject, text, html, idempotencyKey }) {
+  if (!env.emailEnabled) throw new Error('Transactional email is not configured');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${env.resendApiKey}`,
+      'content-type': 'application/json',
+      'idempotency-key': idempotencyKey
+    },
+    body: JSON.stringify({ from: env.emailFrom, to: [to], subject, text, html }),
+    signal: AbortSignal.timeout(10_000)
+  });
+  if (!response.ok) throw new Error('Transactional email delivery failed');
+}
+
+async function issueAuthToken(user, type, lifetimeMs) {
+  const token = randomToken(32);
+  const createdAt = now();
+  await authTokens.deleteMany({ userId: user._id, type });
+  await authTokens.insertOne({
+    tokenHash: sha256(token),
+    userId: user._id,
+    type,
+    createdAt,
+    expiresAt: new Date(createdAt.getTime() + lifetimeMs)
+  });
+  return token;
+}
+
+async function sendVerificationEmail(user) {
+  const token = await issueAuthToken(user, 'email_verification', 24 * 60 * 60_000);
+  const link = frontendTokenUrl('verify', token);
+  await users.updateOne(
+    { _id: user._id },
+    { $set: { verificationExpiresAt: new Date(Date.now() + 24 * 60 * 60_000) } }
+  );
+  await sendEmail({
+    to: user.email,
+    subject: 'Verify your SENSE account',
+    text: `Verify your SENSE account within 24 hours: ${link}`,
+    html: `<p>Hello ${emailEscape(user.displayName)},</p><p>Verify your SENSE account within 24 hours.</p><p><a href="${emailEscape(link)}">Verify account</a></p><p>If you did not request this account, you can ignore this message.</p>`,
+    idempotencyKey: `verify-${sha256(token).slice(0, 48)}`
+  });
+  await users.updateOne({ _id: user._id }, { $set: { verificationSentAt: now() } });
+}
+
+async function sendPasswordResetEmail(user) {
+  const token = await issueAuthToken(user, 'password_reset', 30 * 60_000);
+  const link = frontendTokenUrl('reset', token);
+  await sendEmail({
+    to: user.email,
+    subject: 'Reset your SENSE password',
+    text: `Reset your SENSE password within 30 minutes: ${link}`,
+    html: `<p>Hello ${emailEscape(user.displayName)},</p><p>A password reset was requested for your SENSE account. This link expires in 30 minutes.</p><p><a href="${emailEscape(link)}">Reset password</a></p><p>If you did not request this, no action is required.</p>`,
+    idempotencyKey: `reset-${sha256(token).slice(0, 48)}`
+  });
+  await users.updateOne({ _id: user._id }, { $set: { 'security.passwordResetSentAt': now() } });
+}
+
 app.post('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  let claimedEventId = null;
   try {
     const event = constructStripeEvent(env, req.body, req.get('stripe-signature'));
+    claimedEventId = cleanText(event.id, 200);
+    if (!claimedEventId || !await claimWebhookEvent('stripe', claimedEventId)) return res.json({ received: true, duplicate: true });
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       await markOrderPaid(session.metadata?.orderId || session.client_reference_id, {
@@ -603,8 +927,10 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: 
         }
       );
     }
+    await completeWebhookEvent('stripe', claimedEventId);
     res.json({ received: true });
   } catch {
+    if (claimedEventId) await webhookEvents.deleteOne({ provider: 'stripe', eventId: claimedEventId }).catch(() => {});
     res.status(400).json({ error: 'Invalid webhook' });
   }
 });
@@ -613,8 +939,11 @@ app.post('/api/webhooks/coinbase', express.raw({ type: 'application/json', limit
   const payload = req.body.toString('utf8');
   const valid = verifyCoinbaseWebhook(payload, req.get('x-hook0-signature'), env.coinbaseWebhookSecret, req.headers);
   if (!valid) return res.status(400).json({ error: 'Invalid webhook' });
+  let claimedEventId = null;
   try {
     const event = JSON.parse(payload);
+    claimedEventId = cleanText(event.id || event.eventId || event.data?.id || hmac256(env.jwtSecret, payload), 200);
+    if (!await claimWebhookEvent('coinbase', claimedEventId)) return res.json({ received: true, duplicate: true });
     const orderId = event.metadata?.orderId;
     if (event.eventType === 'checkout.payment.success') {
       await markOrderPaid(orderId, { transactionHash: event.transactionHash });
@@ -631,13 +960,16 @@ app.post('/api/webhooks/coinbase', express.raw({ type: 'application/json', limit
         { $set: { status: 'refunded', refundedCents: Math.round(Number(event.refundedAmount || event.amount || 0) * 100), updatedAt: now() } }
       );
     }
+    await completeWebhookEvent('coinbase', claimedEventId);
     return res.json({ received: true });
   } catch {
+    if (claimedEventId) await webhookEvents.deleteOne({ provider: 'coinbase', eventId: claimedEventId }).catch(() => {});
     return res.status(400).json({ error: 'Invalid event' });
   }
 });
 
 app.use(express.json({ limit: '768kb' }));
+app.use('/api/admin', adminLimiter);
 
 app.get('/health', async (_req, res) => {
   try {
@@ -645,7 +977,7 @@ app.get('/health', async (_req, res) => {
     res.json({
       ok: true,
       service: 'sense-platform-api',
-      version: '1.1.0',
+      version: '1.2.0',
       payments: { card: env.stripeEnabled, crypto: env.coinbaseEnabled },
       time: now().toISOString()
     });
@@ -669,12 +1001,22 @@ app.get('/api/config', async (_req, res) => {
   });
 });
 
-app.post('/api/auth/register', authLimiter, async (req, res) => {
+app.post('/api/auth/register', authLimiter, requireAllowedOrigin, async (req, res) => {
   const value = await platformSettings();
   if (!value.registrationEnabled) return res.status(403).json({ error: 'Registration is currently closed' });
+  if (env.requireEmailVerification && !env.emailEnabled) {
+    return res.status(503).json({ error: 'Account email delivery is not configured' });
+  }
   const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Use a valid email and a 12+ character password with upper, lower, number, and symbol' });
-  const { displayName, username, email, password } = parsed.data;
+  if (!parsed.success) return res.status(400).json({ error: 'Use a valid email and a password of at least 15 characters' });
+  const { displayName, username, email, password, ownerSetupToken } = parsed.data;
+  const issues = passwordIssues(password, { displayName, username, email });
+  if (issues.length) return res.status(400).json({ error: issues[0], issues });
+  const ownerRegistration = Boolean(env.adminEmail && email === env.adminEmail);
+  if (ownerRegistration && (env.ownerBootstrapToken.length < 32 || !safeEqual(ownerSetupToken || '', env.ownerBootstrapToken))) {
+    await audit('security.owner_bootstrap_rejected', null, null, { requestId: req.requestId });
+    return res.status(403).json({ error: 'Owner setup key is required for this account' });
+  }
   const duplicate = await users.findOne({ $or: [{ email }, { username }] }, { projection: { _id: 1 } });
   if (duplicate) return res.status(409).json({ error: 'Email or username is already registered' });
   const createdAt = now();
@@ -682,9 +1024,10 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     displayName,
     username,
     email,
-    passwordHash: await bcrypt.hash(password, 12),
-    role: env.adminEmail && email === env.adminEmail ? 'owner' : 'member',
-    status: 'active',
+    passwordHash: await hashPassword(password),
+    role: env.requireEmailVerification ? 'member' : ownerRegistration ? 'owner' : 'member',
+    ...(env.requireEmailVerification ? { pendingRole: ownerRegistration ? 'owner' : 'member' } : {}),
+    status: env.requireEmailVerification ? 'pending_verification' : 'active',
     tokenVersion: 0,
     createdAt,
     updatedAt: createdAt,
@@ -694,20 +1037,145 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   user._id = result.insertedId;
   await audit('user.registered', user, user);
   await recordAnalytics('account_created', user._id);
-  return res.status(201).json({ token: signToken(user), user: publicUser(user) });
+  if (env.requireEmailVerification) {
+    try {
+      await sendVerificationEmail(user);
+    } catch (error) {
+      console.error('Verification email failed', { requestId: req.requestId, userId: id(user), error: error?.message });
+      return res.status(503).json({ error: 'Account created, but verification email could not be sent. Use resend verification.' });
+    }
+    return res.status(202).json({ verificationRequired: true });
+  }
+  const session = await issueSession(user, req, res);
+  return res.status(201).json({ ...session, user: publicUser(user) });
 });
 
-app.post('/api/auth/login', authLimiter, async (req, res) => {
+app.post('/api/auth/verify-email', authLimiter, requireAllowedOrigin, async (req, res) => {
+  const parsed = authTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Verification link is invalid or expired' });
+  const tokenHash = sha256(parsed.data.token);
+  const token = await authTokens.findOne({ tokenHash, type: 'email_verification', expiresAt: { $gt: now() } });
+  if (!token) return res.status(400).json({ error: 'Verification link is invalid or expired' });
+  const consumed = await authTokens.findOneAndDelete({ _id: token._id, tokenHash, expiresAt: { $gt: now() } });
+  if (!consumed) return res.status(400).json({ error: 'Verification link is invalid or expired' });
+  const user = await users.findOneAndUpdate(
+    { _id: token.userId, status: 'pending_verification' },
+    {
+      $set: { status: 'active', role: 'member', updatedAt: now(), emailVerifiedAt: now() },
+      $unset: { verificationExpiresAt: '', verificationSentAt: '' }
+    },
+    { returnDocument: 'after' }
+  );
+  if (!user) return res.status(400).json({ error: 'Verification link is invalid or expired' });
+  if (user.pendingRole === 'owner') {
+    await users.updateOne({ _id: user._id }, { $set: { role: 'owner' }, $unset: { pendingRole: '' } });
+    user.role = 'owner';
+    delete user.pendingRole;
+  } else {
+    await users.updateOne({ _id: user._id }, { $unset: { pendingRole: '' } });
+  }
+  await audit('security.email_verified', user, user);
+  const session = await issueSession(user, req, res);
+  return res.json({ ...session, user: publicUser(user) });
+});
+
+app.post('/api/auth/resend-verification', authLimiter, requireAllowedOrigin, async (req, res) => {
+  const parsed = emailSchema.safeParse(req.body);
+  if (!parsed.success) return res.json({ accepted: true });
+  const user = await users.findOne({ email: parsed.data.email, status: 'pending_verification' });
+  const recentlySent = user?.verificationSentAt && Date.now() - user.verificationSentAt.getTime() < 5 * 60_000;
+  if (user && env.emailEnabled && !recentlySent) {
+    try {
+      await sendVerificationEmail(user);
+      await audit('security.verification_resent', user, user);
+    } catch (error) {
+      console.error('Verification resend failed', { requestId: req.requestId, userId: id(user), error: error?.message });
+    }
+  }
+  return res.json({ accepted: true });
+});
+
+app.post('/api/auth/password-reset/request', authLimiter, requireAllowedOrigin, async (req, res) => {
+  const parsed = emailSchema.safeParse(req.body);
+  if (parsed.success) {
+    const user = await users.findOne({ email: parsed.data.email, status: 'active' });
+    const recentlySent = user?.security?.passwordResetSentAt && Date.now() - user.security.passwordResetSentAt.getTime() < 5 * 60_000;
+    if (user && env.emailEnabled && !recentlySent) {
+      try {
+        await sendPasswordResetEmail(user);
+        await audit('security.password_reset_requested', user, user);
+      } catch (error) {
+        console.error('Password reset email failed', { requestId: req.requestId, userId: id(user), error: error?.message });
+      }
+    }
+  }
+  return res.json({ accepted: true });
+});
+
+app.post('/api/auth/password-reset/confirm', authLimiter, requireAllowedOrigin, async (req, res) => {
+  const parsed = passwordResetSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Reset link or password is invalid' });
+  const tokenHash = sha256(parsed.data.token);
+  const token = await authTokens.findOne({ tokenHash, type: 'password_reset', expiresAt: { $gt: now() } });
+  const user = token ? await users.findOne({ _id: token.userId }) : null;
+  if (!token || !user) return res.status(400).json({ error: 'Reset link is invalid or expired' });
+  const issues = passwordIssues(parsed.data.password, user);
+  if (issues.length) return res.status(400).json({ error: issues[0], issues });
+  const consumed = await authTokens.findOneAndDelete({ _id: token._id, tokenHash, expiresAt: { $gt: now() } });
+  if (!consumed) return res.status(400).json({ error: 'Reset link is invalid or expired' });
+  const passwordHash = await hashPassword(parsed.data.password);
+  await users.updateOne(
+    { _id: user._id },
+    {
+      $set: { passwordHash, passwordChangedAt: now(), updatedAt: now(), 'security.failedLoginCount': 0 },
+      $unset: { 'security.lockedUntil': '', 'security.lastFailedLoginAt': '', 'security.passwordResetSentAt': '' },
+      $inc: { tokenVersion: 1 }
+    }
+  );
+  await Promise.all([
+    revokeUserSessions(user._id),
+    authAttempts.deleteMany({ userId: user._id }),
+    authTokens.deleteMany({ userId: user._id })
+  ]);
+  await audit('security.password_reset_completed', user, user);
+  return res.json({ reset: true });
+});
+
+app.post('/api/auth/login', authLimiter, requireAllowedOrigin, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Email and password are required' });
   const user = await users.findOne({ email: parsed.data.email });
-  const valid = user && await bcrypt.compare(parsed.data.password, user.passwordHash);
-  if (!valid) return res.status(401).json({ error: 'Email or password is incorrect' });
+  const verification = await verifyPassword(parsed.data.password, user?.passwordHash || dummyPasswordHash);
+  if (!user || !verification.valid) {
+    if (user) await recordFailedLogin(user);
+    return res.status(401).json({ error: 'Email or password is incorrect' });
+  }
+  if (user.security?.lockedUntil && user.security.lockedUntil > now()) {
+    return res.status(429).json({ error: 'Sign-in is temporarily unavailable. Try again later.' });
+  }
+  if (user.status === 'pending_verification') return res.status(403).json({ error: 'Verify your email before signing in' });
   if (user.status !== 'active') return res.status(403).json({ error: 'Account is not active' });
-  await users.updateOne({ _id: user._id }, { $set: { lastSeenAt: now() } });
+  if (user.mfa?.enabled) {
+    if (!parsed.data.code) return res.status(202).json({ mfaRequired: true });
+    if (!await verifySecondFactor(user, parsed.data.code)) {
+      await recordFailedLogin(user);
+      return res.status(401).json({ error: 'Email, password, or verification code is incorrect' });
+    }
+  }
+  const passwordHash = verification.needsUpgrade ? await hashPassword(parsed.data.password) : user.passwordHash;
+  await users.updateOne(
+    { _id: user._id },
+    {
+      $set: { lastSeenAt: now(), passwordHash, 'security.failedLoginCount': 0 },
+      $unset: { 'security.lockedUntil': '', 'security.lastFailedLoginAt': '' }
+    }
+  );
+  await authAttempts.deleteMany({ userId: user._id });
+  user.passwordHash = passwordHash;
   await audit('user.login', user, user);
   await recordAnalytics('login', user._id);
-  return res.json({ token: signToken(user), user: publicUser(user) });
+  const session = await issueSession(user, req, res);
+  return res.json({ ...session, user: publicUser(user) });
 });
 
 app.get('/api/me', requireAuth, async (req, res) => {
@@ -717,6 +1185,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
   const planMap = new Map(relatedPlans.map(plan => [plan._id.toString(), plan]));
   res.json({
     user: publicUser(req.user),
+    csrfToken: csrfTokenFor(env.jwtSecret, req.sessionToken),
     memberships: activeMemberships.map(item => ({
       id: id(item),
       status: item.status,
@@ -728,8 +1197,113 @@ app.get('/api/me', requireAuth, async (req, res) => {
 });
 
 app.post('/api/auth/logout', requireAuth, async (req, res) => {
+  await sessions.deleteOne({ _id: req.authSession._id });
   await audit('user.logout', req.user, req.user);
+  clearSessionCookie(res);
   res.status(204).end();
+});
+
+app.post('/api/auth/reauth', authLimiter, requireAuth, async (req, res) => {
+  const parsed = reauthSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Password is required' });
+  const verification = await verifyPassword(parsed.data.password, req.user.passwordHash);
+  if (!verification.valid || req.user.mfa?.enabled && !await verifySecondFactor(req.user, parsed.data.code)) {
+    await audit('security.reauthentication_failed', req.user, req.user, { requestId: req.requestId });
+    return res.status(401).json({ error: 'Password or verification code is incorrect' });
+  }
+  const elevatedUntil = new Date(Date.now() + 10 * 60_000);
+  await sessions.updateOne({ _id: req.authSession._id }, { $set: { elevatedUntil } });
+  await audit('security.reauthenticated', req.user, req.user);
+  res.json({ elevatedUntil });
+});
+
+app.get('/api/auth/sessions', requireAuth, async (req, res) => {
+  const result = await sessions.find({ userId: req.user._id, expiresAt: { $gt: now() } }).sort({ lastSeenAt: -1 }).toArray();
+  res.json({
+    sessions: result.map(item => ({
+      id: id(item),
+      current: item._id.equals(req.authSession._id),
+      device: item.device,
+      createdAt: item.createdAt,
+      lastSeenAt: item.lastSeenAt,
+      expiresAt: item.expiresAt
+    }))
+  });
+});
+
+app.delete('/api/auth/sessions/:sessionId', requireAuth, async (req, res) => {
+  const sessionId = objectId(req.params.sessionId);
+  if (!sessionId) return res.status(400).json({ error: 'Invalid session' });
+  const result = await sessions.deleteOne({ _id: sessionId, userId: req.user._id });
+  if (!result.deletedCount) return res.status(404).json({ error: 'Session not found' });
+  const current = sessionId.equals(req.authSession._id);
+  await audit('security.session_revoked', req.user, sessionId, { current });
+  if (current) clearSessionCookie(res);
+  res.status(204).end();
+});
+
+app.post('/api/auth/sessions/revoke-others', requireAuth, requireRecentAuth, async (req, res) => {
+  await revokeUserSessions(req.user._id, req.authSession._id);
+  await audit('security.other_sessions_revoked', req.user, req.user);
+  res.status(204).end();
+});
+
+app.post('/api/auth/mfa/setup', requireAuth, requireRecentAuth, async (req, res) => {
+  const secret = generateTotpSecret();
+  const expiresAt = new Date(Date.now() + 10 * 60_000);
+  await sessions.updateOne(
+    { _id: req.authSession._id },
+    { $set: { pendingMfa: { encryptedSecret: encryptSecret(secret, env.mfaEncryptionKey), expiresAt } } }
+  );
+  const issuer = encodeURIComponent('SENSE');
+  const account = encodeURIComponent(req.user.email);
+  res.json({
+    secret,
+    expiresAt,
+    otpauthUri: `otpauth://totp/${issuer}:${account}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`
+  });
+});
+
+app.post('/api/auth/mfa/enable', requireAuth, requireRecentAuth, async (req, res) => {
+  const parsed = z.object({ code: z.string().trim().regex(/^\d{6}$/) }).safeParse(req.body);
+  const pending = (await sessions.findOne({ _id: req.authSession._id }))?.pendingMfa;
+  if (!parsed.success || !pending || pending.expiresAt <= now()) return res.status(400).json({ error: 'Start MFA setup again' });
+  const secret = decryptSecret(pending.encryptedSecret, env.mfaEncryptionKey);
+  if (!verifyTotp(secret, parsed.data.code)) return res.status(400).json({ error: 'Verification code is incorrect' });
+  const recoveryCodes = generateRecoveryCodes();
+  await users.updateOne(
+    { _id: req.user._id },
+    {
+      $set: {
+        mfa: {
+          enabled: true,
+          encryptedSecret: encryptSecret(secret, env.mfaEncryptionKey),
+          recoveryCodeHashes: recoveryCodes.map(code => recoveryCodeHash(env.jwtSecret, code)),
+          enabledAt: now()
+        },
+        updatedAt: now()
+      }
+    }
+  );
+  await sessions.updateOne({ _id: req.authSession._id }, { $unset: { pendingMfa: '' } });
+  await revokeUserSessions(req.user._id, req.authSession._id);
+  await audit('security.mfa_enabled', req.user, req.user);
+  res.json({ enabled: true, recoveryCodes });
+});
+
+app.post('/api/auth/mfa/disable', authLimiter, requireAuth, async (req, res) => {
+  const parsed = z.object({
+    password: z.string().min(1).max(128),
+    code: z.string().trim().min(6).max(32)
+  }).safeParse(req.body);
+  const password = parsed.success ? await verifyPassword(parsed.data.password, req.user.passwordHash) : { valid: false };
+  if (!req.user.mfa?.enabled || !parsed.success || !password.valid || !await verifySecondFactor(req.user, parsed.data.code)) {
+    return res.status(400).json({ error: 'Password or verification code is incorrect' });
+  }
+  await users.updateOne({ _id: req.user._id }, { $unset: { mfa: '' }, $set: { updatedAt: now() } });
+  await revokeUserSessions(req.user._id, req.authSession._id);
+  await audit('security.mfa_disabled', req.user, req.user);
+  res.json({ enabled: false });
 });
 
 app.get('/api/store/products', async (req, res) => {
@@ -825,9 +1399,10 @@ app.post('/api/checkout/order', requireAuth, checkoutLimiter, async (req, res) =
     await recordAnalytics('checkout_started', req.user._id, { provider: parsed.data.provider, totalCents: order.totalCents, kind: 'order' });
     return res.status(201).json({ order: publicOrder(order), checkoutUrl: checkout.url });
   } catch (error) {
-    await orders.updateOne({ _id: order._id }, { $set: { status: 'failed', failureReason: cleanText(error.message, 200), updatedAt: now() } });
+    await orders.updateOne({ _id: order._id }, { $set: { status: 'failed', failureReason: 'Payment provider unavailable', updatedAt: now() } });
     await releaseInventory(await orders.findOne({ _id: order._id }));
-    return res.status(502).json({ error: error.message || 'Checkout could not be created' });
+    console.error('Order checkout failed', { requestId: req.requestId, orderId: id(order), provider: parsed.data.provider, error: error?.message });
+    return res.status(502).json({ error: 'Checkout could not be created' });
   }
 });
 
@@ -868,8 +1443,9 @@ app.post('/api/checkout/membership', requireAuth, checkoutLimiter, async (req, r
     await recordAnalytics('checkout_started', req.user._id, { provider: parsed.data.provider, totalCents: order.totalCents, kind: 'membership' });
     return res.status(201).json({ order: publicOrder(order), checkoutUrl: checkout.url });
   } catch (error) {
-    await orders.updateOne({ _id: order._id }, { $set: { status: 'failed', failureReason: cleanText(error.message, 200), updatedAt: now() } });
-    return res.status(502).json({ error: error.message || 'Checkout could not be created' });
+    await orders.updateOne({ _id: order._id }, { $set: { status: 'failed', failureReason: 'Payment provider unavailable', updatedAt: now() } });
+    console.error('Membership checkout failed', { requestId: req.requestId, orderId: id(order), provider: parsed.data.provider, error: error?.message });
+    return res.status(502).json({ error: 'Checkout could not be created' });
   }
 });
 
@@ -1210,7 +1786,7 @@ app.get('/api/admin/users', requireAuth, requirePermission('users'), async (req,
   res.json({ users: result.map(user => ({ ...publicUser(user), email: user.email })) });
 });
 
-app.patch('/api/admin/users/:userId', requireAuth, requirePermission('users'), async (req, res) => {
+app.patch('/api/admin/users/:userId', requireAuth, requirePermission('users'), requireRecentAuth, async (req, res) => {
   const userId = objectId(req.params.userId);
   const schema = z.object({
     role: z.enum(['owner', 'admin', 'support', 'editor', 'analyst', 'member']).optional(),
@@ -1223,10 +1799,16 @@ app.patch('/api/admin/users/:userId', requireAuth, requirePermission('users'), a
   if (target._id.equals(req.user._id) && (parsed.data.status === 'suspended' || parsed.data.role && parsed.data.role !== req.user.role)) {
     return res.status(400).json({ error: 'You cannot lock or demote your own account' });
   }
-  if (target.role === 'owner' && req.user.role !== 'owner') return res.status(403).json({ error: 'Only an owner can change an owner account' });
-  if (parsed.data.role === 'owner' && req.user.role !== 'owner') return res.status(403).json({ error: 'Only an owner can grant owner access' });
+  if (target.status === 'pending_verification') {
+    return res.status(409).json({ error: 'Pending accounts must verify their email before administrative changes' });
+  }
+  if (parsed.data.role && req.user.role !== 'owner') return res.status(403).json({ error: 'Only an owner can change account roles' });
+  if (['owner', 'admin'].includes(target.role) && req.user.role !== 'owner') {
+    return res.status(403).json({ error: 'Only an owner can change a privileged account' });
+  }
   const update = { ...parsed.data, updatedAt: now(), tokenVersion: (target.tokenVersion || 0) + 1 };
   await users.updateOne({ _id: userId }, { $set: update });
+  await revokeUserSessions(userId);
   const updated = await users.findOne({ _id: userId });
   await audit('admin.user_updated', req.user, updated, parsed.data);
   res.json({ user: { ...publicUser(updated), email: updated.email } });
@@ -1277,7 +1859,7 @@ app.put('/api/admin/products/:productId', requireAuth, requirePermission('catalo
   res.json({ product: { ...publicProduct(result), status: result.status, inventory: result.inventory, sortOrder: result.sortOrder } });
 });
 
-app.delete('/api/admin/products/:productId', requireAuth, requirePermission('catalog'), async (req, res) => {
+app.delete('/api/admin/products/:productId', requireAuth, requirePermission('catalog'), requireRecentAuth, async (req, res) => {
   const productId = objectId(req.params.productId);
   if (!productId) return res.status(400).json({ error: 'Invalid product' });
   const result = await products.findOneAndUpdate(
@@ -1320,7 +1902,7 @@ app.put('/api/admin/plans/:planId', requireAuth, requirePermission('catalog'), a
   res.json({ plan: { ...publicPlan(result), status: result.status, sortOrder: result.sortOrder } });
 });
 
-app.delete('/api/admin/plans/:planId', requireAuth, requirePermission('catalog'), async (req, res) => {
+app.delete('/api/admin/plans/:planId', requireAuth, requirePermission('catalog'), requireRecentAuth, async (req, res) => {
   const planId = objectId(req.params.planId);
   if (!planId) return res.status(400).json({ error: 'Invalid membership plan' });
   const result = await plans.findOneAndUpdate(
@@ -1372,28 +1954,96 @@ app.patch('/api/admin/orders/:orderId', requireAuth, requirePermission('orders')
   res.json({ order: publicOrder(result) });
 });
 
-app.post('/api/admin/orders/:orderId/refund', requireAuth, requirePermission('orders'), checkoutLimiter, async (req, res) => {
+app.post('/api/admin/orders/:orderId/refund', requireAuth, requirePermission('refunds'), requireRecentAuth, checkoutLimiter, async (req, res) => {
   const orderId = objectId(req.params.orderId);
+  const idempotencyKey = cleanText(req.get('idempotency-key'), 128);
   const parsed = z.object({
     amountCents: z.number().int().min(1),
     reason: z.string().trim().min(3).max(300)
   }).safeParse(req.body);
-  if (!orderId || !parsed.success) return res.status(400).json({ error: 'Refund request is invalid' });
-  const order = await orders.findOne({ _id: orderId });
-  if (!order || !['paid', 'fulfilled', 'partially_refunded'].includes(order.status)) return res.status(409).json({ error: 'Order is not refundable' });
-  const remaining = order.totalCents - (order.refundedCents || 0);
-  if (parsed.data.amountCents > remaining) return res.status(400).json({ error: 'Refund exceeds the remaining paid amount' });
-  if (order.paymentProvider === 'stripe') {
-    if (!order.providerPaymentId) return res.status(409).json({ error: 'Card payment reference is unavailable' });
-    await refundStripePayment(env, order.providerPaymentId, parsed.data.amountCents, parsed.data.reason);
-  } else {
-    await refundCoinbaseCheckout(env, order.providerCheckoutId, parsed.data.amountCents, parsed.data.reason);
+  if (!orderId || !parsed.success || !/^[A-Za-z0-9_.:-]{16,128}$/.test(idempotencyKey)) {
+    return res.status(400).json({ error: 'Refund request is invalid' });
   }
-  const refundedCents = (order.refundedCents || 0) + parsed.data.amountCents;
-  const status = refundedCents >= order.totalCents ? 'refunded' : 'partially_refunded';
-  await orders.updateOne({ _id: order._id }, { $set: { refundedCents, status, updatedAt: now() } });
-  await audit('order.refund_created', req.user, order._id, { amountCents: parsed.data.amountCents, provider: order.paymentProvider });
-  res.status(202).json({ status, refundedCents });
+  try {
+    await refundRequests.insertOne({
+      idempotencyKey,
+      orderId,
+      actorId: req.user._id,
+      amountCents: parsed.data.amountCents,
+      reason: parsed.data.reason,
+      status: 'processing',
+      createdAt: now()
+    });
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    const existing = await refundRequests.findOne({ idempotencyKey, orderId, actorId: req.user._id });
+    if (existing?.status === 'completed') {
+      return res.status(202).json({ status: existing.orderStatus, refundedCents: existing.refundedCents, duplicate: true });
+    }
+    if (existing?.status !== 'failed') {
+      return res.status(409).json({ error: 'This refund request is already being processed' });
+    }
+    const retry = await refundRequests.updateOne(
+      { _id: existing._id, status: 'failed' },
+      { $set: { status: 'processing', retriedAt: now() }, $inc: { retryCount: 1 } }
+    );
+    if (!retry.modifiedCount) return res.status(409).json({ error: 'This refund request is already being processed' });
+  }
+
+  const lockExpiresAt = new Date(Date.now() + 2 * 60_000);
+  const order = await orders.findOneAndUpdate(
+    {
+      _id: orderId,
+      status: { $in: ['paid', 'fulfilled', 'partially_refunded'] },
+      $or: [{ refundLock: { $exists: false } }, { 'refundLock.expiresAt': { $lt: now() } }]
+    },
+    { $set: { refundLock: { idempotencyKey, expiresAt: lockExpiresAt }, updatedAt: now() } },
+    { returnDocument: 'after' }
+  );
+  if (!order) {
+    await refundRequests.updateOne({ idempotencyKey }, { $set: { status: 'rejected', completedAt: now() } });
+    return res.status(409).json({ error: 'Order is not refundable or another refund is in progress' });
+  }
+
+  try {
+    const remaining = order.totalCents - (order.refundedCents || 0);
+    if (parsed.data.amountCents > remaining) {
+      await orders.updateOne({ _id: order._id, 'refundLock.idempotencyKey': idempotencyKey }, { $unset: { refundLock: '' } });
+      await refundRequests.updateOne({ idempotencyKey }, { $set: { status: 'rejected', completedAt: now() } });
+      return res.status(400).json({ error: 'Refund exceeds the remaining paid amount' });
+    }
+    if (order.paymentProvider === 'stripe') {
+      if (!order.providerPaymentId) throw new Error('Missing payment reference');
+      await refundStripePayment(env, order.providerPaymentId, parsed.data.amountCents, parsed.data.reason, idempotencyKey);
+    } else {
+      if (!order.providerCheckoutId) throw new Error('Missing checkout reference');
+      await refundCoinbaseCheckout(env, order.providerCheckoutId, parsed.data.amountCents, parsed.data.reason, idempotencyKey);
+    }
+    const refundedCents = (order.refundedCents || 0) + parsed.data.amountCents;
+    const status = refundedCents >= order.totalCents ? 'refunded' : 'partially_refunded';
+    await orders.updateOne(
+      { _id: order._id, 'refundLock.idempotencyKey': idempotencyKey },
+      { $set: { refundedCents, status, updatedAt: now() }, $unset: { refundLock: '' } }
+    );
+    await refundRequests.updateOne(
+      { idempotencyKey },
+      { $set: { status: 'completed', orderStatus: status, refundedCents, completedAt: now() } }
+    );
+    await audit('order.refund_created', req.user, order._id, {
+      amountCents: parsed.data.amountCents,
+      provider: order.paymentProvider,
+      idempotencyKey
+    });
+    return res.status(202).json({ status, refundedCents });
+  } catch (error) {
+    await Promise.all([
+      orders.updateOne({ _id: order._id, 'refundLock.idempotencyKey': idempotencyKey }, { $unset: { refundLock: '' } }),
+      refundRequests.updateOne({ idempotencyKey }, { $set: { status: 'failed', completedAt: now() } })
+    ]);
+    await audit('order.refund_failed', req.user, order._id, { provider: order.paymentProvider, idempotencyKey });
+    console.error('Refund failed', { requestId: req.requestId, orderId: id(order), error: error?.message });
+    return res.status(502).json({ error: 'Payment provider could not complete the refund' });
+  }
 });
 
 app.get('/api/admin/memberships', requireAuth, requirePermission('memberships'), async (req, res) => {
@@ -1419,7 +2069,7 @@ app.get('/api/admin/memberships', requireAuth, requirePermission('memberships'),
   });
 });
 
-app.patch('/api/admin/memberships/:membershipId', requireAuth, requirePermission('memberships'), async (req, res) => {
+app.patch('/api/admin/memberships/:membershipId', requireAuth, requirePermission('memberships'), requireRecentAuth, async (req, res) => {
   const membershipId = objectId(req.params.membershipId);
   const parsed = z.object({
     status: z.enum(['active', 'past_due', 'paused', 'cancelled']),
@@ -1471,7 +2121,7 @@ app.patch('/api/admin/messages/:messageId', requireAuth, requirePermission('mess
   res.json({ message: { id: id(result), hidden: Boolean(result.moderation?.hidden) } });
 });
 
-app.delete('/api/admin/messages/:messageId', requireAuth, requirePermission('messages'), async (req, res) => {
+app.delete('/api/admin/messages/:messageId', requireAuth, requirePermission('messages'), requireRecentAuth, async (req, res) => {
   const messageId = objectId(req.params.messageId);
   if (!messageId) return res.status(400).json({ error: 'Invalid message' });
   const result = await messages.findOneAndUpdate(
@@ -1530,7 +2180,7 @@ app.get('/api/admin/settings', requireAuth, requirePermission('settings'), async
   res.json({ settings: value });
 });
 
-app.put('/api/admin/settings', requireAuth, requirePermission('settings'), async (req, res) => {
+app.put('/api/admin/settings', requireAuth, requirePermission('settings'), requireRecentAuth, async (req, res) => {
   const parsed = themeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Platform settings are invalid' });
   const value = { key: 'platform', ...parsed.data, updatedAt: now(), updatedBy: req.user._id };
@@ -1561,7 +2211,7 @@ app.get('/api/admin/payments', requireAuth, requirePermission('settings'), async
   });
 });
 
-app.post('/api/admin/broadcasts', requireAuth, requirePermission('broadcasts'), async (req, res) => {
+app.post('/api/admin/broadcasts', requireAuth, requirePermission('broadcasts'), requireRecentAuth, async (req, res) => {
   const parsed = broadcastSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Broadcast is invalid' });
   const announcement = {
@@ -1591,14 +2241,20 @@ app.get('/api/admin/audit', requireAuth, requirePermission('audit'), async (req,
 });
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
-app.use((error, _req, res, _next) => {
+app.use((error, req, res, _next) => {
   if (error?.code === 11000) return res.status(409).json({ error: 'A record with that identifier already exists' });
   if (error?.message === 'Origin is not allowed') return res.status(403).json({ error: 'Origin is not allowed' });
-  console.error(error);
+  if (error?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Request body is invalid' });
+  if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'Request body is too large' });
+  console.error('Unhandled request error', { requestId: req.requestId, error: error?.message });
   return res.status(500).json({ error: 'Internal service error' });
 });
 
 const server = app.listen(env.port, () => console.log(`SENSE platform API listening on ${env.port}`));
+server.requestTimeout = 30_000;
+server.headersTimeout = 35_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 100;
 
 async function shutdown(signal) {
   console.log(`${signal} received`);

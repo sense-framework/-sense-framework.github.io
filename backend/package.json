@@ -1,13 +1,15 @@
 {
   "name": "sense-platform-api",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=20"},
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/payments/coinbase.js && node --check src/payments/stripe.js",
+    "check": "node --check src/server.js && node --check src/security.js && node --check src/payments/coinbase.js && node --check src/payments/stripe.js",
     "test": "node --test"
   },
   "dependencies": {
@@ -19,7 +21,6 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.17.0",
-    "multer": "^2.0.2",
     "stripe": "^18.5.0",
     "zod": "^3.25.76"
   }
