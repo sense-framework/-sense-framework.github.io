@@ -10,9 +10,9 @@
 <title>SENSE</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./senseos.css?v=1.0.3">
-<link rel="stylesheet" href="./enterprise.css?v=1.0.3">
-<link rel="stylesheet" href="./platform.css?v=1.0.3">
+<link rel="stylesheet" href="./senseos.css?v=1.1.0">
+<link rel="stylesheet" href="./enterprise.css?v=1.1.0">
+<link rel="stylesheet" href="./platform.css?v=1.1.0">
 </head>
 <body>
 <div class="boot" id="boot" aria-hidden="true"><img src="./icon.svg" alt=""><div class="wordmark">SENSE</div><i></i></div>
@@ -155,7 +155,14 @@
       </div>
     </section>
 
-    <section class="view" id="view-profile"><header class="page-head"><h1>Profile</h1></header><div class="glass profile-panel"><form id="profileForm"><label>Name<input id="profileName"></label><label>Title<input id="profileTitle"></label><label>Department<input id="profileDepartment"></label><label>Location<input id="profileLocation"></label><label>Bio<textarea id="profileBio"></textarea></label><button class="primary">Save</button></form></div></section>
+    <section class="view" id="view-profile">
+      <div class="profile-shell" id="profileShell">
+        <div class="glass profile-loading" role="status">
+          <span class="profile-loader" aria-hidden="true"></span>
+          <b>Loading profile</b>
+        </div>
+      </div>
+    </section>
 
     <section class="view" id="view-admin">
       <header class="page-head"><div><h1>Command Administration</h1><p class="page-subtitle">Users, commerce, memberships, conversations, intelligence, payments, appearance, and system activity.</p></div><span class="role-chip" id="adminRole">Restricted</span></header>
@@ -196,10 +203,10 @@
 <section class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="glass modal-card"><button class="icon-button modal-close" id="closeModal">×</button><div id="modalBody"></div></div></section>
 <div class="toast" id="toast"></div>
 
-<script src="./config.js?v=1.0.3"></script>
-<script src="./senseos.js?v=1.0.3"></script>
-<script src="./romeo.js?v=1.0.3"></script>
-<script src="./platform.js?v=1.0.3"></script>
-<script src="./platform-loader.js?v=1.0.3"></script>
+<script src="./config.js?v=1.1.0"></script>
+<script src="./senseos.js?v=1.1.0"></script>
+<script src="./romeo.js?v=1.1.0"></script>
+<script src="./platform.js?v=1.1.0"></script>
+<script src="./platform-loader.js?v=1.1.0"></script>
 </body>
 </html>

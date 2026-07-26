@@ -39,6 +39,10 @@
     cart: loadJson(CART_KEY, []),
     conversations: [],
     activeConversation: null,
+    profileUsername: '',
+    profileData: null,
+    profileTab: 'overview',
+    connections: [],
     adminTab: 'overview',
     adminCache: {},
     workspaceSyncTimer: null,
@@ -82,6 +86,30 @@
       hour: 'numeric',
       minute: '2-digit'
     }).format(new Date(value));
+  }
+
+  function initials(user = {}) {
+    return String(user.displayName || user.username || 'S')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(part => part[0]?.toUpperCase() || '')
+      .join('') || 'S';
+  }
+
+  function listFrom(value, limit = 30) {
+    return [...new Set(String(value || '')
+      .split(/[\n,]/)
+      .map(item => item.trim())
+      .filter(Boolean))]
+      .slice(0, limit);
+  }
+
+  function profileUrl(username) {
+    const url = new URL(location.href);
+    url.searchParams.set('profile', username);
+    url.hash = '/profile';
+    return url.toString();
   }
 
   function apiBase() {
@@ -188,9 +216,13 @@
   function renderIdentity() {
     if (!state.user) return;
     const avatar = $('.avatar');
-    if (avatar) avatar.textContent = state.user.displayName?.trim()?.[0]?.toUpperCase() || state.user.username?.[0]?.toUpperCase() || 'S';
+    if (avatar) {
+      avatar.innerHTML = state.user.avatarUrl
+        ? `<img src="${esc(state.user.avatarUrl)}" alt="">`
+        : esc(initials(state.user));
+      avatar.classList.toggle('has-image', Boolean(state.user.avatarUrl));
+    }
     $('#adminRole').textContent = state.user.role;
-    if ($('#profileName') && !$('#profileName').value) $('#profileName').value = state.user.displayName || '';
     const existing = $('#platformAdminLink');
     if (existing) existing.remove();
     if (canAdmin()) {
@@ -588,7 +620,13 @@
         if (query.length < 2) return;
         const result = await api(`/api/users?q=${encodeURIComponent(query)}`);
         $('#personResults').innerHTML = result.users.map(user => `
-          <button class="activity-row" data-person-id="${user.id}" data-person-name="${esc(user.displayName)}"><span><b>${esc(user.displayName)}</b><small>@${esc(user.username)}</small></span><span>Message</span></button>
+          <div class="activity-row person-result">
+            <button class="person-identity" data-profile-username="${esc(user.username)}">
+              <span class="mini-avatar">${user.avatarUrl ? `<img src="${esc(user.avatarUrl)}" alt="">` : esc(initials(user))}</span>
+              <span><b>${esc(user.displayName)}</b><small>@${esc(user.username)}${user.headline ? ` · ${esc(user.headline)}` : ''}</small></span>
+            </button>
+            <button class="secondary" data-person-id="${user.id}" data-person-name="${esc(user.displayName)}">Message</button>
+          </div>
         `).join('');
         $$('[data-person-id]').forEach(button => button.onclick = () => {
           state.adminCache.chatPeer = { id: button.dataset.personId, displayName: button.dataset.personName };
@@ -598,6 +636,489 @@
         });
       }, 250);
     };
+  }
+
+  function profileConnectionLabel(connection) {
+    if (!connection) return 'Connect';
+    if (connection.status === 'accepted') return 'Connected';
+    return connection.direction === 'incoming' ? 'Accept request' : 'Requested';
+  }
+
+  function profileAvatar(user, profile, className = 'profile-avatar-xl') {
+    return `<span class="${className}">${profile.avatarUrl
+      ? `<img src="${esc(profile.avatarUrl)}" alt="${esc(user.displayName)}">`
+      : `<b>${esc(initials(user))}</b>`}</span>`;
+  }
+
+  function availabilityLabel(value) {
+    return {
+      open: 'Open to collaborate',
+      limited: 'Limited availability',
+      unavailable: 'Not currently available'
+    }[value] || 'Open to collaborate';
+  }
+
+  function profileLinkCard(kind, label, url, icon) {
+    if (!url) return '';
+    return `
+      <a class="profile-link-card glass" href="${esc(url)}" target="_blank" rel="noopener noreferrer">
+        <span>${icon}</span><div><b>${esc(label)}</b><small>${esc(url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, ''))}</small></div><i>↗</i>
+      </a>
+    `;
+  }
+
+  function profileProjects(data, limit = Infinity) {
+    const projects = data.profile.projects.slice(0, limit);
+    if (!projects.length) {
+      return `<div class="profile-empty"><span>⌘</span><b>No projects yet</b><small>${data.own ? 'Add work you want people to know about.' : 'This member has not added projects.'}</small></div>`;
+    }
+    return `<div class="profile-project-grid">${projects.map(project => `
+      <article class="glass profile-project-card">
+        <header><span>⌘</span>${data.own ? `<button data-profile-project-edit="${esc(project.id)}" aria-label="Edit ${esc(project.title)}">•••</button>` : ''}</header>
+        <h3>${esc(project.title)}</h3>
+        <p>${esc(project.description || 'Project details coming soon.')}</p>
+        <div class="profile-tags">${project.tags.map(tag => `<span>${esc(tag)}</span>`).join('')}</div>
+        ${project.url ? `<a href="${esc(project.url)}" target="_blank" rel="noopener noreferrer">View project <span>↗</span></a>` : ''}
+      </article>
+    `).join('')}</div>`;
+  }
+
+  function profileUpdates(data) {
+    return `
+      ${data.own ? `
+        <form class="glass profile-compose" id="profileUpdateForm">
+          <span class="mini-avatar">${data.profile.avatarUrl ? `<img src="${esc(data.profile.avatarUrl)}" alt="">` : esc(initials(data.user))}</span>
+          <label><span class="sr-only">Share an update</span><textarea name="body" maxlength="1200" placeholder="Share a project milestone, release, or professional update…" required></textarea></label>
+          <button class="primary">Publish</button>
+        </form>
+      ` : ''}
+      <div class="profile-timeline">
+        ${data.updates.length ? data.updates.map(update => `
+          <article class="glass profile-update">
+            <header>
+              ${profileAvatar(data.user, data.profile, 'mini-avatar')}
+              <span><b>${esc(data.user.displayName)}</b><small>@${esc(data.user.username)} · ${dateTime(update.createdAt)}</small></span>
+              ${data.own ? `<button data-profile-update-delete="${update.id}" aria-label="Delete update">×</button>` : ''}
+            </header>
+            <p>${esc(update.body).replace(/\n/g, '<br>')}</p>
+          </article>
+        `).join('') : `<div class="profile-empty"><span>◉</span><b>No updates yet</b><small>Professional updates will appear here.</small></div>`}
+      </div>
+    `;
+  }
+
+  function profileOverview(data) {
+    const links = data.profile.links;
+    return `
+      <div class="profile-layout">
+        <aside class="profile-side">
+          <article class="glass profile-card">
+            <h2>Details</h2>
+            <dl class="profile-details">
+              ${data.profile.organization ? `<div><dt>Organization</dt><dd>${esc(data.profile.organization)}</dd></div>` : ''}
+              ${data.profile.location ? `<div><dt>Location</dt><dd>${esc(data.profile.location)}</dd></div>` : ''}
+              <div><dt>Availability</dt><dd><span class="availability-dot ${esc(data.profile.availability)}"></span>${esc(availabilityLabel(data.profile.availability))}</dd></div>
+              <div><dt>Joined</dt><dd>${new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(new Date(data.user.createdAt))}</dd></div>
+            </dl>
+          </article>
+          <article class="glass profile-card">
+            <h2>Skills</h2>
+            ${data.profile.skills.length ? `<div class="profile-tags">${data.profile.skills.map(skill => `<span>${esc(skill)}</span>`).join('')}</div>` : '<p class="profile-muted">No skills added yet.</p>'}
+          </article>
+          ${data.profile.interests.length ? `<article class="glass profile-card"><h2>Interests</h2><div class="profile-tags subdued">${data.profile.interests.map(item => `<span>${esc(item)}</span>`).join('')}</div></article>` : ''}
+        </aside>
+        <main class="profile-main">
+          <article class="glass profile-card profile-about">
+            <h2>About</h2>
+            <p>${data.profile.bio ? esc(data.profile.bio).replace(/\n/g, '<br>') : data.own ? 'Tell people what you build, care about, and want to collaborate on.' : 'No biography has been added.'}</p>
+          </article>
+          <section class="profile-section-head"><div><small>Selected work</small><h2>Projects</h2></div>${data.own ? '<button class="secondary" data-profile-project-new>Add project</button>' : ''}</section>
+          ${profileProjects(data, 3)}
+          ${(links.facebook || links.github || links.x || links.youtube || links.website || data.profile.website) ? `
+            <section class="profile-section-head"><div><small>Across the web</small><h2>Links</h2></div></section>
+            <div class="profile-links-grid">
+              ${profileLinkCard('facebook', 'Facebook', links.facebook, 'f')}
+              ${profileLinkCard('github', 'GitHub', links.github, 'GH')}
+              ${profileLinkCard('x', 'X', links.x, 'X')}
+              ${profileLinkCard('youtube', 'YouTube', links.youtube, '▶')}
+              ${profileLinkCard('website', 'Website', links.website || data.profile.website, '↗')}
+            </div>
+          ` : ''}
+        </main>
+      </div>
+    `;
+  }
+
+  function renderProfileBody(data) {
+    if (state.profileTab === 'activity') return profileUpdates(data);
+    if (state.profileTab === 'projects') {
+      return `<section class="profile-section-head profile-body-head"><div><small>Portfolio</small><h2>Projects</h2></div>${data.own ? '<button class="primary" data-profile-project-new>Add project</button>' : ''}</section>${profileProjects(data)}`;
+    }
+    if (state.profileTab === 'links') {
+      const links = data.profile.links;
+      const cards = [
+        profileLinkCard('facebook', 'Facebook', links.facebook, 'f'),
+        profileLinkCard('github', 'GitHub', links.github, 'GH'),
+        profileLinkCard('x', 'X', links.x, 'X'),
+        profileLinkCard('youtube', 'YouTube', links.youtube, '▶'),
+        profileLinkCard('website', 'Website', links.website || data.profile.website, '↗')
+      ].join('');
+      return cards
+        ? `<div class="profile-links-grid profile-links-full">${cards}</div>`
+        : `<div class="profile-empty"><span>↗</span><b>No external links</b><small>${data.own ? 'Add your Facebook, GitHub, X, YouTube, or website from Edit profile.' : 'This member has not added external links.'}</small></div>`;
+    }
+    return profileOverview(data);
+  }
+
+  function renderProfile() {
+    const root = $('#profileShell');
+    const data = state.profileData;
+    if (!root || !data) return;
+    const cover = data.profile.coverUrl
+      ? `<img src="${esc(data.profile.coverUrl)}" alt="" loading="eager">`
+      : '<span aria-hidden="true"></span>';
+    root.innerHTML = `
+      <article class="glass profile-hero">
+        <div class="profile-cover">${cover}</div>
+        <div class="profile-identity">
+          ${profileAvatar(data.user, data.profile)}
+          <div class="profile-heading">
+            <div class="profile-name-row">
+              <div><h1>${esc(data.user.displayName)}</h1><p>@${esc(data.user.username)}</p></div>
+              <span class="profile-status"><i class="${esc(data.profile.availability)}"></i>${esc(availabilityLabel(data.profile.availability))}</span>
+            </div>
+            ${data.profile.headline ? `<p class="profile-headline">${esc(data.profile.headline)}</p>` : ''}
+            <div class="profile-meta">
+              ${data.profile.organization ? `<span>⬡ ${esc(data.profile.organization)}</span>` : ''}
+              ${data.profile.location ? `<span>⌖ ${esc(data.profile.location)}</span>` : ''}
+              <span>◉ Member profile</span>
+            </div>
+          </div>
+          <div class="profile-actions">
+            ${data.own
+              ? '<button class="primary" data-profile-edit>Edit profile</button>'
+              : `<button class="primary" data-profile-message>Message</button><button class="secondary ${data.connection?.status === 'accepted' ? 'connected' : ''}" data-profile-connect>${esc(profileConnectionLabel(data.connection))}</button>`}
+            <div class="profile-menu-wrap">
+              <button class="profile-more-button" data-profile-menu-toggle aria-label="More profile actions" aria-expanded="false">•••</button>
+              <div class="glass profile-popover hidden" id="profilePopover">
+                <button data-profile-copy>Copy profile link <span>⌘</span></button>
+                ${data.own ? '<button data-profile-connections>Manage connections <span>◎</span></button>' : ''}
+                ${!data.own && data.connection ? '<button class="danger" data-profile-disconnect>Remove connection <span>×</span></button>' : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="profile-stats">
+          <button ${data.own ? 'data-profile-connections' : 'disabled'}><strong>${Number(data.stats.connections || 0).toLocaleString()}</strong><span>Connections</span></button>
+          <div><strong>${Number(data.stats.projects || 0).toLocaleString()}</strong><span>Projects</span></div>
+          <div><strong>${Number(data.stats.updates || 0).toLocaleString()}</strong><span>Updates</span></div>
+        </div>
+        <nav class="profile-tabs" aria-label="Profile sections">
+          ${[['overview', 'Overview'], ['activity', 'Activity'], ['projects', 'Projects'], ['links', 'Links']].map(([idValue, label]) => `<button class="${state.profileTab === idValue ? 'active' : ''}" data-profile-tab="${idValue}">${label}</button>`).join('')}
+        </nav>
+      </article>
+      <div class="profile-body">${renderProfileBody(data)}</div>
+    `;
+    bindProfile();
+  }
+
+  async function loadProfile(username = '') {
+    const root = $('#profileShell');
+    if (!root || !state.user) return;
+    const requested = username || new URLSearchParams(location.search).get('profile') || state.profileUsername || state.user.username;
+    state.profileUsername = requested;
+    root.innerHTML = '<div class="glass profile-loading" role="status"><span class="profile-loader"></span><b>Loading profile</b></div>';
+    try {
+      state.profileData = await api(`/api/profiles/${encodeURIComponent(requested)}`);
+      renderProfile();
+    } catch (error) {
+      state.profileData = null;
+      root.innerHTML = `<div class="glass profile-error"><span>!</span><h2>${esc(error.message)}</h2><p>This profile may be private or unavailable.</p><button class="secondary" data-profile-own>Return to your profile</button></div>`;
+      $('[data-profile-own]').onclick = () => openProfile(state.user.username);
+    }
+  }
+
+  function openProfile(username) {
+    if (!username) return;
+    state.profileUsername = username;
+    state.profileTab = 'overview';
+    const url = new URL(location.href);
+    url.searchParams.set('profile', username);
+    history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    closeModal();
+    window.SENSE_APP?.show?.('profile');
+  }
+
+  function profilePayload(changes = {}) {
+    const data = state.profileData;
+    const profile = data.profile;
+    const website = changes.website ?? profile.website ?? profile.links.website ?? '';
+    return {
+      displayName: changes.displayName ?? data.user.displayName,
+      headline: changes.headline ?? profile.headline,
+      bio: changes.bio ?? profile.bio,
+      location: changes.location ?? profile.location,
+      organization: changes.organization ?? profile.organization,
+      website,
+      avatarUrl: changes.avatarUrl ?? profile.avatarUrl,
+      coverUrl: changes.coverUrl ?? profile.coverUrl,
+      availability: changes.availability ?? profile.availability,
+      visibility: changes.visibility ?? profile.visibility,
+      skills: changes.skills ?? profile.skills,
+      interests: changes.interests ?? profile.interests,
+      links: changes.links ?? { ...profile.links, website },
+      projects: changes.projects ?? profile.projects
+    };
+  }
+
+  async function saveProfile(changes) {
+    const result = await api('/api/profile', { method: 'PUT', body: profilePayload(changes) });
+    state.user = { ...state.user, ...result.user };
+    state.profileData = {
+      ...state.profileData,
+      user: { ...state.profileData.user, ...result.user },
+      profile: result.profile,
+      stats: { ...state.profileData.stats, projects: result.profile.projects.length }
+    };
+    window.SENSE_SESSION = { user: state.user };
+    renderIdentity();
+    renderProfile();
+    window.SENSE_APP?.toast?.('Profile saved');
+    return result;
+  }
+
+  function editProfile() {
+    const data = state.profileData;
+    const profile = data.profile;
+    modal('Edit profile', `
+      <form class="admin-form" id="platformProfileForm">
+        <div class="admin-form-grid">
+          <label>Name<input name="displayName" maxlength="60" value="${esc(data.user.displayName)}" required></label>
+          <label>Headline<input name="headline" maxlength="120" value="${esc(profile.headline)}" placeholder="What you do"></label>
+          <label class="full">Bio<textarea name="bio" maxlength="1200" placeholder="What you build, care about, and want to collaborate on">${esc(profile.bio)}</textarea></label>
+          <label>Organization<input name="organization" maxlength="120" value="${esc(profile.organization)}"></label>
+          <label>Location<input name="location" maxlength="100" value="${esc(profile.location)}"></label>
+          <label>Availability<select name="availability"><option value="open" ${profile.availability === 'open' ? 'selected' : ''}>Open to collaborate</option><option value="limited" ${profile.availability === 'limited' ? 'selected' : ''}>Limited availability</option><option value="unavailable" ${profile.availability === 'unavailable' ? 'selected' : ''}>Unavailable</option></select></label>
+          <label>Profile visibility<select name="visibility"><option value="members" ${profile.visibility === 'members' ? 'selected' : ''}>All members</option><option value="connections" ${profile.visibility === 'connections' ? 'selected' : ''}>Connections only</option><option value="private" ${profile.visibility === 'private' ? 'selected' : ''}>Private</option></select></label>
+          <label class="full">Avatar image URL<input name="avatarUrl" type="url" value="${esc(profile.avatarUrl)}" placeholder="https://"></label>
+          <label class="full">Cover image URL<input name="coverUrl" type="url" value="${esc(profile.coverUrl)}" placeholder="https://"></label>
+          <label class="full">Skills<input name="skills" value="${esc(profile.skills.join(', '))}" placeholder="Product design, JavaScript, Strategy"></label>
+          <label class="full">Interests<input name="interests" value="${esc(profile.interests.join(', '))}" placeholder="AI, Open source, Film"></label>
+          <label>Facebook<input name="facebook" type="url" value="${esc(profile.links.facebook)}" placeholder="https://facebook.com/"></label>
+          <label>GitHub<input name="github" type="url" value="${esc(profile.links.github)}" placeholder="https://github.com/"></label>
+          <label>X<input name="x" type="url" value="${esc(profile.links.x)}" placeholder="https://x.com/"></label>
+          <label>YouTube<input name="youtube" type="url" value="${esc(profile.links.youtube)}" placeholder="https://youtube.com/"></label>
+          <label>Website<input name="website" type="url" value="${esc(profile.links.website || profile.website)}" placeholder="https://"></label>
+        </div>
+        <button class="primary">Save profile</button>
+      </form>
+    `);
+    $('#platformProfileForm').onsubmit = async event => {
+      event.preventDefault();
+      const button = event.submitter;
+      button.disabled = true;
+      const form = new FormData(event.currentTarget);
+      try {
+        const website = String(form.get('website') || '').trim();
+        await saveProfile({
+          displayName: form.get('displayName'),
+          headline: form.get('headline'),
+          bio: form.get('bio'),
+          location: form.get('location'),
+          organization: form.get('organization'),
+          website,
+          avatarUrl: form.get('avatarUrl'),
+          coverUrl: form.get('coverUrl'),
+          availability: form.get('availability'),
+          visibility: form.get('visibility'),
+          skills: listFrom(form.get('skills'), 30),
+          interests: listFrom(form.get('interests'), 20),
+          links: {
+            facebook: String(form.get('facebook') || '').trim(),
+            github: String(form.get('github') || '').trim(),
+            x: String(form.get('x') || '').trim(),
+            youtube: String(form.get('youtube') || '').trim(),
+            website
+          }
+        });
+        closeModal();
+      } catch (error) {
+        window.SENSE_APP?.toast?.(error.message);
+        button.disabled = false;
+      }
+    };
+  }
+
+  function editProject(projectId = '') {
+    const projects = state.profileData.profile.projects;
+    const project = projects.find(item => item.id === projectId);
+    modal(project ? 'Edit project' : 'Add project', `
+      <form class="admin-form" id="platformProjectForm">
+        <label>Project name<input name="title" maxlength="120" value="${esc(project?.title || '')}" required></label>
+        <label>Description<textarea name="description" maxlength="600">${esc(project?.description || '')}</textarea></label>
+        <label>Project URL<input name="url" type="url" value="${esc(project?.url || '')}" placeholder="https://"></label>
+        <label>Tags<input name="tags" value="${esc(project?.tags?.join(', ') || '')}" placeholder="Design, JavaScript, Open source"></label>
+        <button class="primary">${project ? 'Save project' : 'Add project'}</button>
+        ${project ? '<button class="secondary danger" type="button" id="deleteProfileProject">Delete project</button>' : ''}
+      </form>
+    `);
+    $('#platformProjectForm').onsubmit = async event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const next = {
+        id: project?.id || globalThis.crypto?.randomUUID?.() || `project-${Date.now()}`,
+        title: String(form.get('title') || '').trim(),
+        description: String(form.get('description') || '').trim(),
+        url: String(form.get('url') || '').trim(),
+        tags: listFrom(form.get('tags'), 10)
+      };
+      const updated = project ? projects.map(item => item.id === project.id ? next : item) : [...projects, next];
+      try {
+        await saveProfile({ projects: updated });
+        closeModal();
+      } catch (error) {
+        window.SENSE_APP?.toast?.(error.message);
+      }
+    };
+    if (project) $('#deleteProfileProject').onclick = async () => {
+      if (!confirm(`Delete ${project.title} from your profile?`)) return;
+      try {
+        await saveProfile({ projects: projects.filter(item => item.id !== project.id) });
+        closeModal();
+      } catch (error) {
+        window.SENSE_APP?.toast?.(error.message);
+      }
+    };
+  }
+
+  async function toggleProfileConnection() {
+    const data = state.profileData;
+    try {
+      if (data.connection?.status === 'accepted' || (data.connection?.status === 'pending' && data.connection.direction === 'outgoing')) {
+        await api(`/api/connections/${encodeURIComponent(data.user.id)}`, { method: 'DELETE' });
+      } else {
+        await api(`/api/connections/${encodeURIComponent(data.user.id)}`, { method: 'POST' });
+      }
+      await loadProfile(data.user.username);
+    } catch (error) {
+      window.SENSE_APP?.toast?.(error.message);
+    }
+  }
+
+  async function removeProfileConnection() {
+    const data = state.profileData;
+    if (!confirm(`Remove your connection with ${data.user.displayName}?`)) return;
+    try {
+      await api(`/api/connections/${encodeURIComponent(data.user.id)}`, { method: 'DELETE' });
+      await loadProfile(data.user.username);
+    } catch (error) {
+      window.SENSE_APP?.toast?.(error.message);
+    }
+  }
+
+  function messageProfile() {
+    const user = state.profileData.user;
+    state.adminCache.chatPeer = user;
+    window.SENSE_APP?.show?.('messages');
+    openConversation(user.id);
+  }
+
+  async function openConnections() {
+    try {
+      const result = await api('/api/connections');
+      state.connections = result.connections || [];
+      renderConnectionsModal();
+    } catch (error) {
+      window.SENSE_APP?.toast?.(error.message);
+    }
+  }
+
+  function renderConnectionsModal() {
+    modal('Connections', `
+      <div class="connection-list">
+        ${state.connections.length ? state.connections.map(item => `
+          <article class="connection-row">
+            <button class="person-identity" data-profile-username="${esc(item.user.username)}">
+              <span class="mini-avatar">${item.user.avatarUrl ? `<img src="${esc(item.user.avatarUrl)}" alt="">` : esc(initials(item.user))}</span>
+              <span><b>${esc(item.user.displayName)}</b><small>@${esc(item.user.username)}${item.user.headline ? ` · ${esc(item.user.headline)}` : ''}</small></span>
+            </button>
+            <div>
+              ${item.status === 'pending' && item.direction === 'incoming' ? `<button class="primary" data-connection-accept="${item.user.id}">Accept</button>` : ''}
+              ${item.status === 'accepted' ? `<button class="secondary" data-connection-message="${item.user.id}" data-person-name="${esc(item.user.displayName)}">Message</button>` : ''}
+              <button class="secondary ${item.status === 'accepted' ? 'danger' : ''}" data-connection-remove="${item.user.id}">${item.status === 'accepted' ? 'Disconnect' : item.direction === 'incoming' ? 'Decline' : 'Cancel'}</button>
+            </div>
+          </article>
+        `).join('') : '<div class="profile-empty"><span>◎</span><b>No connections yet</b><small>Connect from another member’s profile.</small></div>'}
+      </div>
+    `);
+    $$('[data-connection-accept]').forEach(button => button.onclick = async () => {
+      try {
+        await api(`/api/connections/${encodeURIComponent(button.dataset.connectionAccept)}`, { method: 'POST' });
+        await openConnections();
+      } catch (error) {
+        window.SENSE_APP?.toast?.(error.message);
+      }
+    });
+    $$('[data-connection-remove]').forEach(button => button.onclick = async () => {
+      try {
+        await api(`/api/connections/${encodeURIComponent(button.dataset.connectionRemove)}`, { method: 'DELETE' });
+        await openConnections();
+      } catch (error) {
+        window.SENSE_APP?.toast?.(error.message);
+      }
+    });
+    $$('[data-connection-message]').forEach(button => button.onclick = () => {
+      state.adminCache.chatPeer = { id: button.dataset.connectionMessage, displayName: button.dataset.personName };
+      closeModal();
+      window.SENSE_APP?.show?.('messages');
+      openConversation(button.dataset.connectionMessage);
+    });
+  }
+
+  function bindProfile() {
+    $$('[data-profile-tab]').forEach(button => button.onclick = () => {
+      state.profileTab = button.dataset.profileTab;
+      renderProfile();
+    });
+    $('[data-profile-edit]')?.addEventListener('click', editProfile);
+    $$('[data-profile-project-new]').forEach(button => button.onclick = () => editProject());
+    $$('[data-profile-project-edit]').forEach(button => button.onclick = () => editProject(button.dataset.profileProjectEdit));
+    $('[data-profile-connect]')?.addEventListener('click', toggleProfileConnection);
+    $('[data-profile-disconnect]')?.addEventListener('click', removeProfileConnection);
+    $('[data-profile-message]')?.addEventListener('click', messageProfile);
+    $$('[data-profile-connections]').forEach(button => button.onclick = openConnections);
+    $('[data-profile-menu-toggle]')?.addEventListener('click', event => {
+      const popover = $('#profilePopover');
+      popover.classList.toggle('hidden');
+      event.currentTarget.setAttribute('aria-expanded', String(!popover.classList.contains('hidden')));
+    });
+    $('[data-profile-copy]')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(profileUrl(state.profileData.user.username));
+        window.SENSE_APP?.toast?.('Profile link copied');
+      } catch {
+        window.SENSE_APP?.toast?.('Copy is unavailable in this browser');
+      }
+    });
+    $('#profileUpdateForm')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      try {
+        await api('/api/profile/updates', { method: 'POST', body: { body: form.get('body') } });
+        await loadProfile(state.profileData.user.username);
+      } catch (error) {
+        window.SENSE_APP?.toast?.(error.message);
+      }
+    });
+    $$('[data-profile-update-delete]').forEach(button => button.onclick = async () => {
+      if (!confirm('Delete this profile update?')) return;
+      try {
+        await api(`/api/profile/updates/${encodeURIComponent(button.dataset.profileUpdateDelete)}`, { method: 'DELETE' });
+        await loadProfile(state.profileData.user.username);
+      } catch (error) {
+        window.SENSE_APP?.toast?.(error.message);
+      }
+    });
   }
 
   function adminAllowedTabs() {
@@ -1096,7 +1617,21 @@
       if (change) changeCart(change.dataset.cartChange, Number(change.dataset.delta));
       const checkoutNode = event.target.closest('[data-checkout-kind]');
       if (checkoutNode) checkout(checkoutNode.dataset.checkoutKind, checkoutNode.dataset.checkoutProvider, checkoutNode.dataset.checkoutId);
+      const profileTarget = event.target.closest('[data-profile-username]');
+      if (profileTarget) {
+        event.preventDefault();
+        openProfile(profileTarget.dataset.profileUsername);
+      }
     });
+    document.addEventListener('click', event => {
+      const ownProfile = event.target.closest('.nav-target[data-view="profile"]');
+      if (!ownProfile || !state.user) return;
+      state.profileUsername = state.user.username;
+      state.profileTab = 'overview';
+      const url = new URL(location.href);
+      url.searchParams.delete('profile');
+      history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }, true);
     document.addEventListener('click', event => {
       const button = event.target.closest('[data-create="conversation"]');
       if (!button) return;
@@ -1113,6 +1648,10 @@
       if (view === 'store') renderCommerce();
       if (view === 'memberships') renderMemberships();
       if (view === 'orders') refreshOrders();
+      if (view === 'profile') {
+        const requested = new URLSearchParams(location.search).get('profile') || state.profileUsername || state.user?.username;
+        if (requested) loadProfile(requested);
+      }
       if (view === 'admin') {
         if (canAdmin()) loadAdminTab();
         else {
@@ -1143,7 +1682,7 @@
   }
 
   window.SENSE_PLATFORM = {
-    version: '1.0.3',
+    version: '1.1.0',
     api,
     state,
     refresh: loadCommerce,

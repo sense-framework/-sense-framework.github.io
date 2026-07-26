@@ -65,6 +65,8 @@ const memberships = db.collection('memberships');
 const analytics = db.collection('analytics_events');
 const settings = db.collection('settings');
 const workspaceStates = db.collection('workspace_states');
+const profileUpdates = db.collection('profile_updates');
+const connections = db.collection('connections');
 
 await Promise.all([
   users.createIndex({ email: 1 }, { unique: true }),
@@ -89,6 +91,11 @@ await Promise.all([
   analytics.createIndex({ createdAt: -1 }, { expireAfterSeconds: 60 * 60 * 24 * 730 }),
   analytics.createIndex({ name: 1, createdAt: -1 }),
   workspaceStates.createIndex({ userId: 1 }, { unique: true }),
+  profileUpdates.createIndex({ userId: 1, createdAt: -1 }),
+  profileUpdates.createIndex({ deletedAt: 1, createdAt: -1 }),
+  connections.createIndex({ pairKey: 1 }, { unique: true }),
+  connections.createIndex({ requesterId: 1, status: 1, updatedAt: -1 }),
+  connections.createIndex({ recipientId: 1, status: 1, updatedAt: -1 }),
   settings.createIndex({ key: 1 }, { unique: true })
 ]);
 await users.updateMany({ role: 'user' }, { $set: { role: 'member', updatedAt: new Date() } });
@@ -146,14 +153,50 @@ const ROLE_PERMISSIONS = {
   member: []
 };
 
+const PROFILE_DEFAULTS = {
+  headline: '',
+  bio: '',
+  location: '',
+  organization: '',
+  website: '',
+  avatarUrl: '',
+  coverUrl: '',
+  availability: 'open',
+  visibility: 'members',
+  skills: [],
+  interests: [],
+  links: { facebook: '', github: '', x: '', youtube: '', website: '' },
+  projects: []
+};
+
+const profileDetails = user => ({
+  ...PROFILE_DEFAULTS,
+  ...(user.profile || {}),
+  skills: user.profile?.skills || [],
+  interests: user.profile?.interests || [],
+  links: { ...PROFILE_DEFAULTS.links, ...(user.profile?.links || {}) },
+  projects: user.profile?.projects || []
+});
+
 const publicUser = user => ({
   id: id(user),
   displayName: user.displayName,
   username: user.username,
   role: user.role,
   status: user.status,
+  avatarUrl: user.profile?.avatarUrl || '',
+  headline: user.profile?.headline || '',
   createdAt: user.createdAt,
   lastSeenAt: user.lastSeenAt || null
+});
+
+const connectionKey = (left, right) => [id(left), id(right)].sort().join(':');
+const publicConnection = (connection, viewerId) => ({
+  id: id(connection),
+  status: connection.status,
+  direction: connection.requesterId.equals(viewerId) ? 'outgoing' : 'incoming',
+  createdAt: connection.createdAt,
+  updatedAt: connection.updatedAt
 });
 
 const publicProduct = product => ({
@@ -269,6 +312,39 @@ const registerSchema = z.object({
 });
 const loginSchema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(128) });
 const messageSchema = z.object({ body: z.string().trim().min(1).max(4000) });
+const optionalUrl = z.string().trim().url().or(z.literal('')).refine(
+  value => !value || /^https?:\/\//i.test(value),
+  'URL must use http or https'
+);
+const profileSchema = z.object({
+  displayName: z.string().trim().min(2).max(60),
+  headline: z.string().trim().max(120).default(''),
+  bio: z.string().trim().max(1200).default(''),
+  location: z.string().trim().max(100).default(''),
+  organization: z.string().trim().max(120).default(''),
+  website: optionalUrl.default(''),
+  avatarUrl: optionalUrl.default(''),
+  coverUrl: optionalUrl.default(''),
+  availability: z.enum(['open', 'limited', 'unavailable']).default('open'),
+  visibility: z.enum(['members', 'connections', 'private']).default('members'),
+  skills: z.array(z.string().trim().min(1).max(40)).max(30).default([]),
+  interests: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+  links: z.object({
+    facebook: optionalUrl.default(''),
+    github: optionalUrl.default(''),
+    x: optionalUrl.default(''),
+    youtube: optionalUrl.default(''),
+    website: optionalUrl.default('')
+  }).default(PROFILE_DEFAULTS.links),
+  projects: z.array(z.object({
+    id: z.string().trim().min(1).max(80),
+    title: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(600).default(''),
+    url: optionalUrl.default(''),
+    tags: z.array(z.string().trim().min(1).max(30)).max(10).default([])
+  })).max(12).default([])
+});
+const profileUpdateSchema = z.object({ body: z.string().trim().min(1).max(1200) });
 const broadcastSchema = z.object({
   title: z.string().trim().min(1).max(100),
   body: z.string().trim().min(1).max(2000),
@@ -569,7 +645,7 @@ app.get('/health', async (_req, res) => {
     res.json({
       ok: true,
       service: 'sense-platform-api',
-      version: '1.0.0',
+      version: '1.1.0',
       payments: { card: env.stripeEnabled, crypto: env.coinbaseEnabled },
       time: now().toISOString()
     });
@@ -818,6 +894,144 @@ app.get('/api/users', requireAuth, async (req, res) => {
   ];
   const result = await users.find(filter, { projection: { passwordHash: 0, email: 0, tokenVersion: 0 } }).sort({ displayName: 1 }).limit(50).toArray();
   res.json({ users: result.map(publicUser) });
+});
+
+app.get('/api/profiles/:username', requireAuth, async (req, res) => {
+  const username = cleanText(req.params.username, 24).toLowerCase();
+  const target = await users.findOne({ username, status: 'active' });
+  if (!target) return res.status(404).json({ error: 'Profile not found' });
+  const own = target._id.equals(req.user._id);
+  const elevated = ['owner', 'admin', 'support'].includes(req.user.role);
+  const relationship = own ? null : await connections.findOne({ pairKey: connectionKey(req.user._id, target._id) });
+  const details = profileDetails(target);
+  if (!own && !elevated && details.visibility === 'private') {
+    return res.status(403).json({ error: 'This profile is private' });
+  }
+  if (!own && !elevated && details.visibility === 'connections' && relationship?.status !== 'accepted') {
+    return res.status(403).json({ error: 'This profile is visible to connections' });
+  }
+  const [connectionCount, updateCount, updates] = await Promise.all([
+    connections.countDocuments({
+      status: 'accepted',
+      $or: [{ requesterId: target._id }, { recipientId: target._id }]
+    }),
+    profileUpdates.countDocuments({ userId: target._id, deletedAt: null }),
+    profileUpdates.find({ userId: target._id, deletedAt: null }).sort({ createdAt: -1 }).limit(40).toArray()
+  ]);
+  res.json({
+    user: publicUser(target),
+    profile: details,
+    own,
+    connection: relationship ? publicConnection(relationship, req.user._id) : null,
+    stats: {
+      connections: connectionCount,
+      updates: updateCount,
+      projects: details.projects.length
+    },
+    updates: updates.map(item => ({ id: id(item), body: item.body, createdAt: item.createdAt }))
+  });
+});
+
+app.put('/api/profile', requireAuth, async (req, res) => {
+  const parsed = profileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Profile details are invalid',
+      issues: parsed.error.issues.map(issue => issue.path.join('.'))
+    });
+  }
+  const { displayName, ...profile } = parsed.data;
+  const updatedAt = now();
+  await users.updateOne(
+    { _id: req.user._id },
+    { $set: { displayName, profile, updatedAt } }
+  );
+  const updated = await users.findOne({ _id: req.user._id });
+  await audit('profile.updated', updated, updated, { fields: Object.keys(profile) });
+  res.json({ user: publicUser(updated), profile: profileDetails(updated) });
+});
+
+app.post('/api/profile/updates', requireAuth, messageLimiter, async (req, res) => {
+  const parsed = profileUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Update must contain between 1 and 1,200 characters' });
+  const update = {
+    userId: req.user._id,
+    body: parsed.data.body,
+    createdAt: now(),
+    deletedAt: null
+  };
+  const result = await profileUpdates.insertOne(update);
+  await recordAnalytics('profile_update_created', req.user._id);
+  res.status(201).json({ update: { id: result.insertedId.toString(), body: update.body, createdAt: update.createdAt } });
+});
+
+app.delete('/api/profile/updates/:updateId', requireAuth, async (req, res) => {
+  const updateId = objectId(req.params.updateId);
+  if (!updateId) return res.status(400).json({ error: 'Invalid profile update' });
+  const result = await profileUpdates.updateOne(
+    { _id: updateId, userId: req.user._id, deletedAt: null },
+    { $set: { deletedAt: now() } }
+  );
+  if (!result.modifiedCount) return res.status(404).json({ error: 'Profile update not found' });
+  res.status(204).end();
+});
+
+app.get('/api/connections', requireAuth, async (req, res) => {
+  const rows = await connections.find({
+    $or: [{ requesterId: req.user._id }, { recipientId: req.user._id }]
+  }).sort({ updatedAt: -1 }).limit(500).toArray();
+  const peerIds = rows.map(item => item.requesterId.equals(req.user._id) ? item.recipientId : item.requesterId);
+  const peers = peerIds.length ? await users.find({ _id: { $in: peerIds }, status: 'active' }).toArray() : [];
+  const peerMap = new Map(peers.map(user => [user._id.toString(), user]));
+  res.json({
+    connections: rows.map(item => {
+      const peerId = item.requesterId.equals(req.user._id) ? item.recipientId : item.requesterId;
+      const peer = peerMap.get(peerId.toString());
+      return peer ? { ...publicConnection(item, req.user._id), user: publicUser(peer) } : null;
+    }).filter(Boolean)
+  });
+});
+
+app.post('/api/connections/:userId', requireAuth, async (req, res) => {
+  const targetId = objectId(req.params.userId);
+  if (!targetId || targetId.equals(req.user._id)) return res.status(400).json({ error: 'Connection target is invalid' });
+  const target = await users.findOne({ _id: targetId, status: 'active' });
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  const pairKey = connectionKey(req.user._id, targetId);
+  let connection = await connections.findOne({ pairKey });
+  if (!connection) {
+    const createdAt = now();
+    const created = {
+      pairKey,
+      requesterId: req.user._id,
+      recipientId: targetId,
+      status: 'pending',
+      createdAt,
+      updatedAt: createdAt
+    };
+    try {
+      const result = await connections.insertOne(created);
+      connection = { ...created, _id: result.insertedId };
+      await recordAnalytics('connection_requested', req.user._id, { targetId: targetId.toString() });
+    } catch (error) {
+      if (error?.code !== 11000) throw error;
+      connection = await connections.findOne({ pairKey });
+    }
+  }
+  if (connection.status === 'pending' && connection.recipientId.equals(req.user._id)) {
+    const updatedAt = now();
+    await connections.updateOne({ _id: connection._id }, { $set: { status: 'accepted', updatedAt } });
+    connection = { ...connection, status: 'accepted', updatedAt };
+    await recordAnalytics('connection_accepted', req.user._id, { targetId: targetId.toString() });
+  }
+  res.json({ connection: publicConnection(connection, req.user._id) });
+});
+
+app.delete('/api/connections/:userId', requireAuth, async (req, res) => {
+  const targetId = objectId(req.params.userId);
+  if (!targetId || targetId.equals(req.user._id)) return res.status(400).json({ error: 'Connection target is invalid' });
+  await connections.deleteOne({ pairKey: connectionKey(req.user._id, targetId) });
+  res.status(204).end();
 });
 
 app.get('/api/announcements', requireAuth, async (_req, res) => {
