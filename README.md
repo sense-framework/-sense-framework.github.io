@@ -6,7 +6,7 @@ The public entry remains intentionally minimal. Authenticated users receive the 
 
 ## Platform capabilities
 
-- Real registration and login with strong password validation, bcrypt hashing, short-lived signed sessions, account suspension, and token revocation
+- Real registration and login with email verification, one-time password resets, 15-character passphrases, memory-hard scrypt hashing, legacy bcrypt migration, server-side revocable sessions, CSRF protection, lockouts, MFA, and privileged reauthentication
 - Owner, administrator, support, editor, analyst, and member roles
 - Product catalog, inventory tracking, carts, order history, fulfillment, and refunds
 - Recurring card memberships through Stripe and prepaid crypto memberships through Coinbase Business Checkout
@@ -16,7 +16,7 @@ The public entry remains intentionally minimal. Authenticated users receive the 
 - Direct member messaging with administrative search, hide, restore, and soft-delete controls
 - Server-side page, signup, checkout, purchase, revenue, and chat analytics
 - Live theme tokens and feature controls managed from Command Administration
-- Immutable audit records for privileged actions
+- Audit records for privileged and security-sensitive actions
 - Installable PWA shell with offline static assets
 
 There are no temporary administrator accounts, preloaded users, fake orders, sample products, or seeded analytics.
@@ -40,7 +40,7 @@ cp .env.example .env
 npm run dev
 ```
 
-MongoDB and a JWT secret of at least 32 characters are required. The account matching `ADMIN_EMAIL` becomes the initial owner when it registers.
+MongoDB, `JWT_SECRET`, and a separate `MFA_ENCRYPTION_KEY` of at least 32 characters are required. The account matching `ADMIN_EMAIL` becomes the initial owner only when registration also supplies the `OWNER_BOOTSTRAP_TOKEN`. Enable MFA immediately, save the recovery codes offline, then rotate the bootstrap token.
 
 ## Payments
 
@@ -55,6 +55,6 @@ The Payment Operations page reports whether each provider and webhook secret is 
 
 ## Deployment
 
-The frontend can remain on GitHub Pages or move to any static host. The API is deployable from either `render.yaml`. Update `CORS_ORIGINS`, `FRONTEND_URL`, and `config.js` when the public domains change.
+The frontend can remain on GitHub Pages or move to any static host. The API is deployable from either `render.yaml`. GitHub Pages never receives database, session, payment, or encryption secrets. Update `CORS_ORIGINS`, `FRONTEND_URL`, `config.js`, and the frontend CSP when the public domains change.
 
 See [Theming](docs/THEMING.md), [Deployment](docs/DEPLOYMENT.md), and [Operations](docs/OPERATIONS.md).

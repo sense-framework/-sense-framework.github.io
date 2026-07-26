@@ -3,7 +3,7 @@ services:
     name: sense-platform-api
     runtime: node
     rootDir: backend
-    buildCommand: npm ci --no-audit --no-fund
+    buildCommand: npm ci --ignore-scripts --no-audit --no-fund
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -16,7 +16,23 @@ services:
         value: sense_platform
       - key: JWT_SECRET
         generateValue: true
+      - key: MFA_ENCRYPTION_KEY
+        generateValue: true
+      - key: SESSION_HOURS
+        value: "12"
+      - key: COOKIE_SAME_SITE
+        value: "None"
+      - key: REQUIRE_ADMIN_MFA
+        value: "true"
       - key: ADMIN_EMAIL
+        sync: false
+      - key: OWNER_BOOTSTRAP_TOKEN
+        generateValue: true
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "true"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
         sync: false
       - key: CORS_ORIGINS
         value: https://sense-framework.github.io

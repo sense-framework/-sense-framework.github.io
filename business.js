@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const STORE = 'sense.enterprise.v1';
   const WORKSPACE_STORE = 'sense.workspace.empty.v1';
   const STAGES = ['New', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
@@ -33,7 +33,7 @@
 
   function load() {
     try {
-      const value = JSON.parse(localStorage.getItem(STORE) || 'null');
+      const value = JSON.parse(sessionStorage.getItem(STORE) || 'null');
       if (!value || typeof value !== 'object') return clone(EMPTY);
       return { ...clone(EMPTY), ...value, settings: { ...EMPTY.settings, ...(value.settings || {}) } };
     } catch {
@@ -43,7 +43,7 @@
 
   function save(action = '') {
     if (action) log(action);
-    localStorage.setItem(STORE, JSON.stringify(state));
+    sessionStorage.setItem(STORE, JSON.stringify(state));
     renderAll();
     syncPublicCareers();
     window.dispatchEvent(new CustomEvent('sense:enterprise-change', { detail: { enterprise: state } }));
@@ -55,7 +55,7 @@
   }
 
   function workspaceState() {
-    try { return JSON.parse(localStorage.getItem(WORKSPACE_STORE) || '{}') || {}; }
+    try { return JSON.parse(sessionStorage.getItem(WORKSPACE_STORE) || '{}') || {}; }
     catch { return {}; }
   }
 
@@ -645,7 +645,7 @@
         if(!value||typeof value!=='object')return;
         Object.keys(state).forEach(key=>delete state[key]);
         Object.assign(state,clone(EMPTY),value,{settings:{...EMPTY.settings,...(value.settings||{})}});
-        localStorage.setItem(STORE,JSON.stringify(state));
+        sessionStorage.setItem(STORE,JSON.stringify(state));
         renderAll();
       },
       open:enterpriseShow,

@@ -3,12 +3,10 @@
 
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
-  const TOKEN_KEY = 'sense.session.v1';
   const CART_KEY = 'sense.cart.v1';
-  const API_KEY = 'sense.api';
   const ADMIN_PERMISSIONS = {
     owner: ['*'],
-    admin: ['users', 'catalog', 'orders', 'memberships', 'messages', 'analytics', 'settings', 'audit', 'broadcasts'],
+    admin: ['users', 'catalog', 'orders', 'refunds', 'memberships', 'messages', 'analytics', 'settings', 'audit', 'broadcasts'],
     support: ['users', 'orders', 'memberships', 'messages'],
     editor: ['catalog', 'settings'],
     analyst: ['analytics', 'orders', 'memberships'],
@@ -29,14 +27,14 @@
   ];
 
   const state = {
-    token: sessionStorage.getItem(TOKEN_KEY) || '',
+    csrfToken: '',
     user: null,
     memberships: [],
     config: null,
     products: [],
     plans: [],
     orders: [],
-    cart: loadJson(CART_KEY, []),
+    cart: loadJson(CART_KEY, [], sessionStorage),
     conversations: [],
     activeConversation: null,
     profileUsername: '',
@@ -48,10 +46,11 @@
     workspaceSyncTimer: null,
     pendingEnterprise: null
   };
+  let reauthenticationPromise = null;
 
-  function loadJson(key, fallback) {
+  function loadJson(key, fallback, storage = sessionStorage) {
     try {
-      const value = JSON.parse(localStorage.getItem(key) || 'null');
+      const value = JSON.parse(storage.getItem(key) || 'null');
       return value == null ? fallback : value;
     } catch {
       return fallback;
@@ -113,20 +112,27 @@
   }
 
   function apiBase() {
-    return String(localStorage.getItem(API_KEY) || window.SENSE_CONFIG?.apiUrl || '').replace(/\/$/, '');
+    return String(window.SENSE_CONFIG?.apiUrl || '').replace(/\/$/, '');
   }
 
   async function api(path, options = {}) {
     const headers = { ...(options.headers || {}) };
     if (options.body !== undefined && !(options.body instanceof FormData)) headers['content-type'] = 'application/json';
-    if (state.token && options.auth !== false) headers.authorization = `Bearer ${state.token}`;
+    if (state.csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method || 'GET')) {
+      headers['x-csrf-token'] = state.csrfToken;
+    }
     const response = await fetch(`${apiBase()}${path}`, {
       method: options.method || 'GET',
       headers,
       body: options.body === undefined || options.body instanceof FormData ? options.body : JSON.stringify(options.body),
+      credentials: 'include',
       signal: AbortSignal.timeout(options.timeout || 18_000)
     });
     const result = response.status === 204 ? null : await response.json().catch(() => ({}));
+    if (response.status === 428 && options.reauthenticate !== false && path !== '/api/auth/reauth') {
+      await requestReauthentication();
+      return api(path, { ...options, reauthenticate: false });
+    }
     if (!response.ok) {
       const error = new Error(result?.error || 'Request failed');
       error.status = response.status;
@@ -194,18 +200,28 @@
   }
 
   function setSession(payload) {
-    state.token = payload.token;
+    state.csrfToken = payload.csrfToken || '';
     state.user = payload.user;
-    sessionStorage.setItem(TOKEN_KEY, state.token);
     window.SENSE_SESSION = { user: state.user };
     renderIdentity();
   }
 
   function clearSession(reload = true) {
-    state.token = '';
+    state.csrfToken = '';
     state.user = null;
     state.memberships = [];
-    sessionStorage.removeItem(TOKEN_KEY);
+    [
+      'sense.session.v1',
+      'sense.workspace.empty.v1',
+      'sense.enterprise.v1',
+      'sense.romeo.empty.v1',
+      'sense.romeo.endpoint',
+      'sense.romeo.key',
+      CART_KEY
+    ].forEach(key => {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    });
     window.SENSE_SESSION = null;
     if (reload) {
       location.hash = '';
@@ -245,8 +261,18 @@
       const payload = await api('/api/auth/login', {
         method: 'POST',
         auth: false,
-        body: { email: $('#email').value.trim(), password: $('#password').value }
+        body: {
+          email: $('#email').value.trim(),
+          password: $('#password').value,
+          code: $('#loginCode').value.trim() || undefined
+        }
       });
+      if (payload.mfaRequired) {
+        $('#loginMfa').classList.remove('hidden');
+        $('#loginCode').focus();
+        status('Enter the six-digit code from your authenticator.', 'info');
+        return;
+      }
       setSession(payload);
       status('');
       await enterPlatform();
@@ -265,9 +291,16 @@
           displayName: $('#registerName').value.trim(),
           username: $('#registerUsername').value.trim(),
           email: $('#registerEmail').value.trim(),
-          password: $('#registerPassword').value
+          password: $('#registerPassword').value,
+          ownerSetupToken: $('#ownerSetupToken').value.trim() || undefined
         }
       });
+      if (payload.verificationRequired) {
+        $('#registerPassword').value = '';
+        $('#ownerSetupToken').value = '';
+        status('Check your email to verify the account before signing in.', 'success');
+        return;
+      }
       setSession(payload);
       status('');
       await enterPlatform();
@@ -276,11 +309,116 @@
     }
   }
 
+  async function resendVerification() {
+    const email = $('#email').value.trim() || $('#registerEmail').value.trim();
+    if (!email) {
+      status('Enter your email first.', 'error');
+      return;
+    }
+    try {
+      await api('/api/auth/resend-verification', { method: 'POST', auth: false, body: { email } });
+      status('If that account is waiting for verification, a new email is on the way.', 'success');
+    } catch (error) {
+      status(error.message, 'error');
+    }
+  }
+
+  function requestPasswordReset() {
+    modal('Reset password', `
+      <form class="admin-form" id="passwordResetRequestForm">
+        <p class="page-subtitle">Enter your account email. The response is intentionally the same whether or not an account exists.</p>
+        <label>Email<input type="email" id="passwordResetEmail" value="${esc($('#email').value.trim())}" autocomplete="email" required autofocus></label>
+        <p class="auth-status" id="passwordResetRequestStatus" role="status"></p>
+        <button class="primary" type="submit">Send reset link</button>
+      </form>
+    `);
+    $('#passwordResetRequestForm').onsubmit = async event => {
+      event.preventDefault();
+      try {
+        await api('/api/auth/password-reset/request', {
+          method: 'POST',
+          auth: false,
+          body: { email: $('#passwordResetEmail').value.trim() }
+        });
+        closeModal();
+        status('If the account exists, a password reset email is on the way.', 'success');
+      } catch (error) {
+        $('#passwordResetRequestStatus').textContent = error.message;
+      }
+    };
+  }
+
+  function clearAuthQuery(parameter) {
+    const url = new URL(location.href);
+    url.searchParams.delete(parameter);
+    if (url.hash.startsWith(`#/auth/${parameter}?`)) url.hash = '';
+    history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  async function handleAuthLink() {
+    const parameters = new URLSearchParams(location.search);
+    const hashMatch = location.hash.match(/^#\/auth\/(verify|reset)\?(.+)$/);
+    const hashParameters = new URLSearchParams(hashMatch?.[2] || '');
+    const verificationToken = parameters.get('verify') || (hashMatch?.[1] === 'verify' ? hashParameters.get('token') : '');
+    if (verificationToken) {
+      status('Verifying your account…');
+      try {
+        const payload = await api('/api/auth/verify-email', {
+          method: 'POST',
+          auth: false,
+          body: { token: verificationToken }
+        });
+        clearAuthQuery('verify');
+        setSession(payload);
+        await enterPlatform();
+        window.SENSE_APP?.toast?.('Email verified');
+        return true;
+      } catch (error) {
+        clearAuthQuery('verify');
+        status(error.message, 'error');
+        return false;
+      }
+    }
+    const resetToken = parameters.get('reset') || (hashMatch?.[1] === 'reset' ? hashParameters.get('token') : '');
+    if (!resetToken) return false;
+    modal('Choose a new password', `
+      <form class="admin-form" id="passwordResetConfirmForm">
+        <p class="page-subtitle">Use a unique passphrase of at least 15 characters. Every existing session will be revoked.</p>
+        <label>New password<input type="password" id="passwordResetNew" minlength="15" maxlength="72" autocomplete="new-password" required autofocus></label>
+        <label>Confirm password<input type="password" id="passwordResetConfirm" minlength="15" maxlength="72" autocomplete="new-password" required></label>
+        <p class="auth-status" id="passwordResetConfirmStatus" role="status"></p>
+        <button class="primary" type="submit">Reset password</button>
+      </form>
+    `);
+    $('#passwordResetConfirmForm').onsubmit = async event => {
+      event.preventDefault();
+      const password = $('#passwordResetNew').value;
+      if (password !== $('#passwordResetConfirm').value) {
+        $('#passwordResetConfirmStatus').textContent = 'Passwords do not match';
+        return;
+      }
+      try {
+        await api('/api/auth/password-reset/confirm', {
+          method: 'POST',
+          auth: false,
+          body: { token: resetToken, password }
+        });
+        clearAuthQuery('reset');
+        closeModal();
+        status('Password reset. Sign in with the new password.', 'success');
+        $('#email').focus();
+      } catch (error) {
+        $('#passwordResetConfirmStatus').textContent = error.message;
+      }
+    };
+    return true;
+  }
+
   async function restoreSession() {
-    if (!state.token) return false;
     try {
       const result = await api('/api/me');
       state.user = result.user;
+      state.csrfToken = result.csrfToken || '';
       state.memberships = result.memberships || [];
       window.SENSE_SESSION = { user: state.user };
       renderIdentity();
@@ -325,10 +463,10 @@
   }
 
   function scheduleWorkspaceSync() {
-    if (!state.token) return;
+    if (!state.user) return;
     clearTimeout(state.workspaceSyncTimer);
     state.workspaceSyncTimer = setTimeout(async () => {
-      const enterprise = window.SENSE_ENTERPRISE?.exportState?.() || loadJson('sense.enterprise.v1', {});
+      const enterprise = window.SENSE_ENTERPRISE?.exportState?.() || loadJson('sense.enterprise.v1', {}, sessionStorage);
       try {
         await api('/api/workspace', {
           method: 'PUT',
@@ -345,7 +483,7 @@
     const tasks = [
       api('/api/store/products', { auth: false }),
       api('/api/store/plans', { auth: false }),
-      state.token ? api('/api/orders') : Promise.resolve({ orders: [] })
+      state.user ? api('/api/orders') : Promise.resolve({ orders: [] })
     ];
     const [productResult, planResult, orderResult] = await Promise.all(tasks);
     state.products = productResult.products || [];
@@ -358,7 +496,7 @@
   function sanitizeCart() {
     const available = new Set(state.products.map(product => product.id));
     state.cart = state.cart.filter(item => available.has(item.productId) && item.quantity > 0);
-    localStorage.setItem(CART_KEY, JSON.stringify(state.cart));
+    sessionStorage.setItem(CART_KEY, JSON.stringify(state.cart));
   }
 
   function cartQuantity() {
@@ -391,7 +529,7 @@
   }
 
   function persistCart() {
-    localStorage.setItem(CART_KEY, JSON.stringify(state.cart));
+    sessionStorage.setItem(CART_KEY, JSON.stringify(state.cart));
     renderCart();
   }
 
@@ -494,7 +632,7 @@
   }
 
   async function checkout(kind, provider, itemId) {
-    if (!state.token) {
+    if (!state.user) {
       $('#auth').classList.remove('hidden');
       return;
     }
@@ -510,7 +648,7 @@
   }
 
   async function refreshOrders() {
-    if (!state.token) return;
+    if (!state.user) return;
     try {
       const [ordersResult, account] = await Promise.all([api('/api/orders'), api('/api/me')]);
       state.orders = ordersResult.orders || [];
@@ -532,7 +670,7 @@
   }
 
   async function loadConversations() {
-    if (!state.token) return;
+    if (!state.user) return;
     try {
       const result = await api('/api/conversations');
       state.conversations = result.conversations || [];
@@ -606,6 +744,159 @@
 
   function closeModal() {
     $('#platformModal')?.remove();
+  }
+
+  function requestReauthentication() {
+    if (reauthenticationPromise) return reauthenticationPromise;
+    const pending = new Promise((resolve, reject) => {
+      modal('Confirm it is you', `
+        <form class="admin-form" id="reauthForm">
+          <p class="page-subtitle">This action changes sensitive account or business data. Confirm your password to continue.</p>
+          <label>Password<input id="reauthPassword" type="password" autocomplete="current-password" required autofocus></label>
+          <label class="${state.user?.mfaEnabled ? '' : 'hidden'}">Authenticator or recovery code<input id="reauthCode" inputmode="numeric" autocomplete="one-time-code"></label>
+          <p class="auth-status" id="reauthStatus" role="status"></p>
+          <button class="primary" type="submit">Confirm for 10 minutes</button>
+        </form>
+      `);
+      const cancel = () => {
+        closeModal();
+        reject(new Error('Confirmation cancelled'));
+      };
+      $('#platformModalClose').onclick = cancel;
+      $('#reauthForm').onsubmit = async event => {
+        event.preventDefault();
+        const submit = event.submitter;
+        submit.disabled = true;
+        $('#reauthStatus').textContent = 'Confirming…';
+        try {
+          await api('/api/auth/reauth', {
+            method: 'POST',
+            reauthenticate: false,
+            body: {
+              password: $('#reauthPassword').value,
+              code: $('#reauthCode').value.trim() || undefined
+            }
+          });
+          closeModal();
+          resolve();
+        } catch (error) {
+          $('#reauthStatus').textContent = error.message;
+          submit.disabled = false;
+        }
+      };
+    });
+    reauthenticationPromise = pending.finally(() => { reauthenticationPromise = null; });
+    return reauthenticationPromise;
+  }
+
+  async function loadAccountSecurity() {
+    const root = $('#accountSecurity');
+    if (!root || !state.user) return;
+    root.innerHTML = '<h2>Account security</h2><p class="page-subtitle">Loading protected sessions…</p>';
+    try {
+      const result = await api('/api/auth/sessions');
+      root.innerHTML = `
+        <h2>Account security</h2>
+        <div class="security-summary">
+          <span class="status-pill ${state.user.mfaEnabled ? 'active' : 'pending'}">MFA ${state.user.mfaEnabled ? 'enabled' : 'not enabled'}</span>
+          <p>${state.user.mfaEnabled ? 'Your password is backed by an authenticator or recovery code.' : 'Add an authenticator before using owner or administrator controls.'}</p>
+          <button class="secondary" id="${state.user.mfaEnabled ? 'disableMfa' : 'setupMfa'}">${state.user.mfaEnabled ? 'Disable MFA' : 'Set up MFA'}</button>
+        </div>
+        <h3>Signed-in devices</h3>
+        <div class="security-sessions">
+          ${(result.sessions || []).map(session => `
+            <div class="activity-row">
+              <span><b>${session.current ? 'This device' : esc(session.device || 'Device')}</b><small>Last active ${dateTime(session.lastSeenAt)} · expires ${dateTime(session.expiresAt)}</small></span>
+              <button class="secondary" data-revoke-session="${session.id}" data-current="${session.current}">Revoke</button>
+            </div>
+          `).join('')}
+        </div>
+        ${(result.sessions || []).length > 1 ? '<button class="secondary" id="revokeOtherSessions">Revoke every other device</button>' : ''}
+      `;
+      $('#setupMfa')?.addEventListener('click', setupMfa);
+      $('#disableMfa')?.addEventListener('click', disableMfa);
+      $('#revokeOtherSessions')?.addEventListener('click', async () => {
+        await api('/api/auth/sessions/revoke-others', { method: 'POST', body: {} });
+        window.SENSE_APP?.toast?.('Other sessions revoked');
+        loadAccountSecurity();
+      });
+      $$('[data-revoke-session]').forEach(button => button.onclick = async () => {
+        const current = button.dataset.current === 'true';
+        await api(`/api/auth/sessions/${encodeURIComponent(button.dataset.revokeSession)}`, { method: 'DELETE' });
+        if (current) clearSession(true);
+        else loadAccountSecurity();
+      });
+    } catch (error) {
+      root.innerHTML = `<h2>Account security</h2><p class="auth-status error">${esc(error.message)}</p>`;
+    }
+  }
+
+  async function setupMfa() {
+    try {
+      const setup = await api('/api/auth/mfa/setup', { method: 'POST', body: {} });
+      modal('Set up multi-factor authentication', `
+        <form class="admin-form" id="enableMfaForm">
+          <p class="page-subtitle">In your authenticator app, add a setup key for SENSE. Keep this secret private.</p>
+          <label>Setup key<input id="mfaSecret" value="${esc(setup.secret)}" readonly></label>
+          <label>Six-digit code<input id="enableMfaCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus></label>
+          <p class="auth-status" id="enableMfaStatus" role="status"></p>
+          <button class="primary" type="submit">Enable MFA</button>
+        </form>
+      `);
+      $('#enableMfaForm').onsubmit = async event => {
+        event.preventDefault();
+        try {
+          const result = await api('/api/auth/mfa/enable', {
+            method: 'POST',
+            body: { code: $('#enableMfaCode').value.trim() }
+          });
+          state.user.mfaEnabled = true;
+          $('.admin-modal-body').innerHTML = `
+            <div class="admin-form">
+              <h3>Save these one-time recovery codes</h3>
+              <p class="page-subtitle">They will not be shown again. Store them somewhere separate from this device.</p>
+              <pre class="recovery-codes">${esc(result.recoveryCodes.join('\n'))}</pre>
+              <button class="primary" id="finishMfa">I saved them</button>
+            </div>
+          `;
+          $('#finishMfa').onclick = () => { closeModal(); loadAccountSecurity(); };
+        } catch (error) {
+          $('#enableMfaStatus').textContent = error.message;
+        }
+      };
+    } catch (error) {
+      window.SENSE_APP?.toast?.(error.message);
+    }
+  }
+
+  function disableMfa() {
+    modal('Disable multi-factor authentication', `
+      <form class="admin-form" id="disableMfaForm">
+        <p class="page-subtitle">This weakens account protection and immediately revokes every other device.</p>
+        <label>Password<input id="disableMfaPassword" type="password" autocomplete="current-password" required></label>
+        <label>Authenticator or recovery code<input id="disableMfaCode" autocomplete="one-time-code" required autofocus></label>
+        <p class="auth-status" id="disableMfaStatus" role="status"></p>
+        <button class="primary danger" type="submit">Disable MFA</button>
+      </form>
+    `);
+    $('#disableMfaForm').onsubmit = async event => {
+      event.preventDefault();
+      try {
+        await api('/api/auth/mfa/disable', {
+          method: 'POST',
+          reauthenticate: false,
+          body: {
+            password: $('#disableMfaPassword').value,
+            code: $('#disableMfaCode').value.trim()
+          }
+        });
+        state.user.mfaEnabled = false;
+        closeModal();
+        loadAccountSecurity();
+      } catch (error) {
+        $('#disableMfaStatus').textContent = error.message;
+      }
+    };
   }
 
   function openNewMessage() {
@@ -1335,6 +1626,7 @@
   }
 
   function openOrderForm(order) {
+    const refundIdempotencyKey = crypto.randomUUID();
     modal(`Order ${order.number}`, `
       <form class="admin-form" id="orderForm">
         <div class="admin-grid-2"><div><span class="status-pill ${esc(order.status)}">${esc(order.status)}</span><h3>${money(order.totalCents, order.currency)}</h3><p>${esc(order.customer?.displayName || '')}<br>${esc(order.customer?.email || '')}</p></div><div>${(order.lineItems || []).map(item => `<p>${item.quantity} × ${esc(item.name)} — ${money(item.totalCents, order.currency)}</p>`).join('')}</div></div>
@@ -1342,7 +1634,7 @@
         <label>Internal note<textarea name="note"></textarea></label>
         <button class="primary">Update order</button>
       </form>
-      ${['paid', 'fulfilled', 'partially_refunded'].includes(order.status) ? `<hr><form class="admin-form" id="refundForm"><h3>Refund</h3><label>Amount in dollars<input name="amount" type="number" min=".01" max="${((order.totalCents - order.refundedCents) / 100).toFixed(2)}" step=".01" required></label><label>Reason<textarea name="reason" required></textarea></label><button class="secondary danger">Issue refund</button></form>` : ''}
+      ${can('refunds') && ['paid', 'fulfilled', 'partially_refunded'].includes(order.status) ? `<hr><form class="admin-form" id="refundForm"><h3>Refund</h3><label>Amount in dollars<input name="amount" type="number" min=".01" max="${((order.totalCents - order.refundedCents) / 100).toFixed(2)}" step=".01" required></label><label>Reason<textarea name="reason" required></textarea></label><button class="secondary danger">Issue refund</button></form>` : ''}
     `);
     $('#orderForm').onsubmit = async event => {
       event.preventDefault();
@@ -1356,7 +1648,11 @@
       if (!confirm('Issue this refund through the payment provider?')) return;
       const form = new FormData(event.target);
       try {
-        await api(`/api/admin/orders/${order.id}/refund`, { method: 'POST', body: { amountCents: Math.round(Number(form.get('amount')) * 100), reason: form.get('reason').trim() } });
+        await api(`/api/admin/orders/${order.id}/refund`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': refundIdempotencyKey },
+          body: { amountCents: Math.round(Number(form.get('amount')) * 100), reason: form.get('reason').trim() }
+        });
         closeModal();
         renderAdminOrders();
       } catch (error) { window.SENSE_APP?.toast?.(error.message); }
@@ -1605,6 +1901,8 @@
       status('');
     });
     $('#registerForm').onsubmit = event => { event.preventDefault(); register(); };
+    $('#forgotPassword').onclick = requestPasswordReset;
+    $('#resendVerification').onclick = resendVerification;
     $('#storeSearch').oninput = renderProducts;
     $('#refreshOrders').onclick = refreshOrders;
     $('#manageBilling').onclick = openBilling;
@@ -1648,6 +1946,7 @@
       if (view === 'store') renderCommerce();
       if (view === 'memberships') renderMemberships();
       if (view === 'orders') refreshOrders();
+      if (view === 'system') loadAccountSecurity();
       if (view === 'profile') {
         const requested = new URLSearchParams(location.search).get('profile') || state.profileUsername || state.user?.username;
         if (requested) loadProfile(requested);
@@ -1663,13 +1962,7 @@
     document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
   }
 
-  async function init() {
-    bind();
-    await loadConfig();
-    await restoreSession();
-    if (!state.user && /^#\/(store|memberships)/.test(location.hash)) {
-      try { await loadCommerce(); } catch {}
-    }
+  function watchEnterpriseModules() {
     const enterpriseTimer = setInterval(() => {
       if (!window.SENSE_ENTERPRISE) return;
       clearInterval(enterpriseTimer);
@@ -1681,8 +1974,19 @@
     setTimeout(() => clearInterval(enterpriseTimer), 10_000);
   }
 
+  async function init() {
+    bind();
+    watchEnterpriseModules();
+    await loadConfig();
+    if (await handleAuthLink()) return;
+    await restoreSession();
+    if (!state.user && /^#\/(store|memberships)/.test(location.hash)) {
+      try { await loadCommerce(); } catch {}
+    }
+  }
+
   window.SENSE_PLATFORM = {
-    version: '1.1.0',
+    version: '1.2.0',
     api,
     state,
     refresh: loadCommerce,

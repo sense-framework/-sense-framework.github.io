@@ -3,13 +3,13 @@
   const STORE='sense.enterprise.v1';
   const required=['forms','jobs','applications','companies','contacts','deals','invoices','expenses','budgets','vendors','contracts','onboarding','reviews','goals','campaigns','leads','events'];
   try{
-    const state=JSON.parse(localStorage.getItem(STORE)||'{}')||{};
+    const state=JSON.parse(sessionStorage.getItem(STORE)||'{}')||{};
     let changed=false;
     required.forEach(key=>{if(!Array.isArray(state[key])){state[key]=[];changed=true}});
     if(!state.settings||typeof state.settings!=='object'){state.settings={currency:'USD',fiscalYearStart:1};changed=true}
-    if(changed||!localStorage.getItem(STORE))localStorage.setItem(STORE,JSON.stringify(state));
+    if(changed||!sessionStorage.getItem(STORE))sessionStorage.setItem(STORE,JSON.stringify(state));
   }catch{
-    localStorage.setItem(STORE,JSON.stringify(Object.fromEntries(required.map(key=>[key,[]]))));
+    sessionStorage.setItem(STORE,JSON.stringify(Object.fromEntries(required.map(key=>[key,[]]))));
   }
   function role(){return window.SENSE_SESSION?.user?.role||'member'}
   function admin(){return['owner','admin'].includes(role())}

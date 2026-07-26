@@ -88,10 +88,10 @@ export function createStripePortal(env, customerId) {
   });
 }
 
-export function refundStripePayment(env, paymentIntent, amountCents, reason) {
+export function refundStripePayment(env, paymentIntent, amountCents, reason, idempotencyKey) {
   return stripe(env).refunds.create({
     payment_intent: paymentIntent,
     amount: amountCents,
     reason: ['duplicate', 'fraudulent', 'requested_by_customer'].includes(reason) ? reason : 'requested_by_customer'
-  });
+  }, { idempotencyKey });
 }

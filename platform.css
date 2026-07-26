@@ -36,6 +36,12 @@ button:not(:disabled):hover{transform:translateY(-1px)}
 .auth-status{min-height:1.4em;margin:14px 0 0;color:#cdaeb3;font-size:.75rem;text-align:center}
 .auth-status.error{color:#ef8797}
 .auth-status.success{color:#72d6a0}
+.auth-assist{display:flex;justify-content:space-between;gap:10px}
+.text-button{border:0;background:transparent;padding:4px 0;color:var(--muted);font-size:.65rem;text-decoration:underline;text-underline-offset:3px}
+.text-button:hover{color:var(--brand-text)}
+.owner-setup{border-top:1px solid var(--line);padding-top:10px;color:var(--muted);font-size:.68rem}
+.owner-setup summary{cursor:pointer}
+.owner-setup[open] label{margin-top:10px}
 .avatar.has-image{overflow:hidden;padding:0;background:#080809}
 .avatar.has-image img{width:100%;height:100%;display:block;object-fit:cover}
 .rail nav{overflow-y:auto;scrollbar-width:none}
@@ -246,6 +252,15 @@ button:not(:disabled):hover{transform:translateY(-1px)}
 .connection-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}
 .connection-row:last-child{border-bottom:0}.connection-row>div{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
 .connection-row>div button{padding:9px 11px;font-size:.66rem}
+.security-summary{display:grid;gap:10px;margin-bottom:20px}
+.security-summary .status-pill{width:max-content}
+.security-summary p{margin:0;color:var(--muted);font-size:.72rem;line-height:1.55}
+.security-sessions{display:grid;margin:8px 0 13px}
+.security-sessions .activity-row{gap:12px}
+.security-sessions .activity-row>span{min-width:0}
+.security-sessions b,.security-sessions small{display:block}
+.security-sessions small{margin-top:4px;color:var(--muted);font-size:.62rem;overflow:hidden;text-overflow:ellipsis}
+.recovery-codes{margin:0;border:1px solid var(--line);border-radius:14px;background:#030303;padding:16px;color:#eee;font:700 .82rem/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;user-select:all}
 @media(max-width:1150px){
   .store-layout{grid-template-columns:1fr}.cart-panel{position:static}
   .admin-kpis{grid-template-columns:repeat(2,1fr)}

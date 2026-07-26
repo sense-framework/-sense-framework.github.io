@@ -63,13 +63,13 @@ export function createCoinbaseCheckout(env, order) {
   }, crypto.randomUUID());
 }
 
-export function refundCoinbaseCheckout(env, checkoutId, amountCents, reason) {
+export function refundCoinbaseCheckout(env, checkoutId, amountCents, reason, idempotencyKey) {
   return request(
     env,
     'POST',
     `${checkoutPath}/${checkoutId}/refund`,
     { amount: (amountCents / 100).toFixed(2), currency: env.paymentCurrency, reason },
-    crypto.randomUUID()
+    idempotencyKey
   );
 }
 
