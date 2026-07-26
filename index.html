@@ -10,21 +10,20 @@
 <title>SENSE</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./senseos.css?v=1.0.2">
-<link rel="stylesheet" href="./enterprise.css?v=1.0.2">
-<link rel="stylesheet" href="./platform.css?v=1.0.2">
+<link rel="stylesheet" href="./senseos.css?v=1.0.3">
+<link rel="stylesheet" href="./enterprise.css?v=1.0.3">
+<link rel="stylesheet" href="./platform.css?v=1.0.3">
 </head>
 <body>
 <div class="boot" id="boot" aria-hidden="true"><img src="./icon.svg" alt=""><div class="wordmark">SENSE</div><i></i></div>
 
-<main class="landing" id="landing">
+<main class="landing hidden" id="landing">
   <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
   <button class="landing-mark" id="openAuth" aria-label="Open SENSE"><img src="./icon.svg" alt=""><span class="wordmark">SENSE</span></button>
 </main>
 
 <section class="auth hidden" id="auth" aria-modal="true" role="dialog" aria-labelledby="authTitle">
   <div class="glass auth-card">
-    <button class="icon-button auth-close" id="closeAuth" aria-label="Close">×</button>
     <img src="./icon.svg" alt="" class="auth-logo">
     <h1 id="authTitle" class="wordmark">SENSE</h1>
     <div class="auth-tabs" role="tablist" aria-label="Account access">
@@ -197,10 +196,10 @@
 <section class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="glass modal-card"><button class="icon-button modal-close" id="closeModal">×</button><div id="modalBody"></div></div></section>
 <div class="toast" id="toast"></div>
 
-<script src="./config.js?v=1.0.2"></script>
-<script src="./senseos.js?v=1.0.2"></script>
-<script src="./romeo.js?v=1.0.2"></script>
-<script src="./platform.js?v=1.0.2"></script>
-<script src="./platform-loader.js?v=1.0.2"></script>
+<script src="./config.js?v=1.0.3"></script>
+<script src="./senseos.js?v=1.0.3"></script>
+<script src="./romeo.js?v=1.0.3"></script>
+<script src="./platform.js?v=1.0.3"></script>
+<script src="./platform-loader.js?v=1.0.3"></script>
 </body>
 </html>
