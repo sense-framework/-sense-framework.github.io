@@ -1,7 +1,6 @@
 (() => {
   'use strict';
   const STORE='sense.enterprise.v1';
-  const COMPANY_STORE='sense.company.portal.v1';
   const required=['forms','jobs','applications','companies','contacts','deals','invoices','expenses','budgets','vendors','contracts','onboarding','reviews','goals','campaigns','leads','events'];
   try{
     const state=JSON.parse(localStorage.getItem(STORE)||'{}')||{};
@@ -12,15 +11,8 @@
   }catch{
     localStorage.setItem(STORE,JSON.stringify(Object.fromEntries(required.map(key=>[key,[]]))));
   }
-  function role(){
-    try{
-      const state=JSON.parse(localStorage.getItem(COMPANY_STORE)||'{}')||{};
-      if(sessionStorage.getItem('sense.preview')==='1'&&!state.activeAccountId)return'Owner';
-      const workspace=(state.workspaces||[]).find(item=>item.id===state.activeWorkspaceId);
-      return workspace?.members?.find(item=>item.accountId===state.activeAccountId)?.role||'Member';
-    }catch{return'Member'}
-  }
-  function admin(){return['Owner','Administrator'].includes(role())}
+  function role(){return window.SENSE_SESSION?.user?.role||'member'}
+  function admin(){return['owner','admin'].includes(role())}
   function notify(text){const node=document.querySelector('#toast');if(!node)return;node.textContent=text;node.classList.add('show');clearTimeout(node._enterpriseTimer);node._enterpriseTimer=setTimeout(()=>node.classList.remove('show'),2400)}
   const restrictedViews=new Set(['executive','finance','vendors','marketing','applications','formresponses']);
   document.addEventListener('click',event=>{
