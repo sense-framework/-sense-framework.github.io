@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.2';
   const load = src => new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = src;
@@ -9,7 +9,7 @@
     document.body.appendChild(script);
   });
   Promise.resolve()
-    .then(() => load(`./enterprise-preload.js?v=${VERSION}`))
-    .then(() => load(`./enterprise.js?v=${VERSION}`))
+    .then(() => load(`./business-preload.js?v=${VERSION}`))
+    .then(() => load(`./business.js?v=${VERSION}`))
     .catch(() => window.SENSE_APP?.toast?.('Business modules could not start'));
 })();

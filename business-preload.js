@@ -1,5 +1,5 @@
 (() => {
-  'use strict';
+  "use strict";
   const STORE='sense.enterprise.v1';
   const required=['forms','jobs','applications','companies','contacts','deals','invoices','expenses','budgets','vendors','contracts','onboarding','reviews','goals','campaigns','leads','events'];
   try{
