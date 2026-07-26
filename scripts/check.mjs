@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const files = ['index.html', 'senseos.js', 'platform.js', 'company.js', 'enterprise-preload.js', 'enterprise.js', 'sw.js'];
+const files = ['index.html', 'senseos.js', 'platform.js', 'platform-loader.js', 'business-preload.js', 'business.js', 'sw.js'];
 const forbidden = [
   'Temporary administrator',
   'sense.demoAdminUntil',
