@@ -10,10 +10,10 @@ const assets = [
   'senseos.js',
   'platform.css',
   'platform.js',
-  'company.js',
-  'enterprise-preload.js',
+  'platform-loader.js',
+  'business-preload.js',
   'enterprise.css',
-  'enterprise.js',
+  'business.js',
   'romeo.js',
   'icon.svg',
   'manifest.webmanifest',
@@ -25,8 +25,8 @@ await mkdir(output, { recursive: true });
 for (const asset of assets) await cp(resolve(root, asset), resolve(output, asset));
 
 const index = await readFile(resolve(output, 'index.html'), 'utf8');
-const company = await readFile(resolve(output, 'company.js'), 'utf8');
-const entryGraph = `${index}\n${company}`;
+const loader = await readFile(resolve(output, 'platform-loader.js'), 'utf8');
+const entryGraph = `${index}\n${loader}`;
 for (const asset of assets.filter(name => !['index.html', 'config.js', 'sw.js'].includes(name))) {
   if (!entryGraph.includes(asset) && !['icon.svg', 'manifest.webmanifest'].includes(asset)) {
     throw new Error(`Production index does not reference ${asset}`);
