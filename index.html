@@ -10,8 +10,9 @@
 <title>SENSE</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./senseos.css?v=0.6.0">
-<link rel="stylesheet" href="./company.css?v=0.6.0">
+<link rel="stylesheet" href="./senseos.css?v=1.0.1">
+<link rel="stylesheet" href="./enterprise.css?v=1.0.1">
+<link rel="stylesheet" href="./platform.css?v=1.0.1">
 </head>
 <body>
 <div class="boot" id="boot" aria-hidden="true"><img src="./icon.svg" alt=""><div class="wordmark">SENSE</div><i></i></div>
@@ -26,12 +27,24 @@
     <button class="icon-button auth-close" id="closeAuth" aria-label="Close">×</button>
     <img src="./icon.svg" alt="" class="auth-logo">
     <h1 id="authTitle" class="wordmark">SENSE</h1>
-    <form id="loginForm">
+    <div class="auth-tabs" role="tablist" aria-label="Account access">
+      <button class="active" type="button" data-auth-tab="login">Sign in</button>
+      <button type="button" data-auth-tab="register">Create account</button>
+    </div>
+    <form id="loginForm" class="account-form">
       <label>Email<input type="email" id="email" autocomplete="email" required></label>
       <label>Password<input type="password" id="password" autocomplete="current-password" required></label>
       <button class="primary" type="submit">Sign in</button>
     </form>
-    <button class="secondary" id="preview" type="button">Temporary administrator</button>
+    <form id="registerForm" class="account-form hidden">
+      <label>Name<input type="text" id="registerName" autocomplete="name" minlength="2" maxlength="60" required></label>
+      <label>Username<input type="text" id="registerUsername" autocomplete="username" pattern="[a-zA-Z0-9_.-]{3,24}" required></label>
+      <label>Email<input type="email" id="registerEmail" autocomplete="email" required></label>
+      <label>Password<input type="password" id="registerPassword" autocomplete="new-password" minlength="12" required></label>
+      <small class="form-help">Use 12+ characters with uppercase, lowercase, a number, and a symbol.</small>
+      <button class="primary" type="submit">Create account</button>
+    </form>
+    <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
   </div>
 </section>
 
@@ -39,6 +52,8 @@
   <aside class="rail glass">
     <button class="brand nav-target active" data-view="home" aria-label="Home"><img src="./icon.svg" alt=""></button>
     <nav aria-label="Primary">
+      <button class="nav-target" data-view="store" data-label="Shop" aria-label="Shop">◈</button>
+      <button class="nav-target" data-view="memberships" data-label="Memberships" aria-label="Memberships">◆</button>
       <button class="nav-target" data-view="feed" aria-label="Feed">◉</button>
       <button class="nav-target" data-view="messages" aria-label="Messages">✉</button>
       <button class="nav-target" data-view="people" aria-label="People">◎</button>
@@ -74,6 +89,9 @@
         <button class="module-card glass nav-target" data-view="tasks"><span>✓</span><b>Tasks</b><small data-count="tasks">0</small></button>
         <button class="module-card glass nav-target" data-view="requests"><span>↗</span><b>Requests</b><small data-count="requests">0</small></button>
         <button class="module-card glass nav-target" data-view="knowledge"><span>▤</span><b>Knowledge</b><small data-count="knowledge">0</small></button>
+        <button class="module-card glass nav-target" data-view="store"><span>◈</span><b>Shop</b><small id="homeProductCount">0</small></button>
+        <button class="module-card glass nav-target" data-view="memberships"><span>◆</span><b>Memberships</b><small id="homeMembershipCount">0</small></button>
+        <button class="module-card glass nav-target" data-view="orders"><span>⌁</span><b>Orders</b><small id="homeOrderCount">0</small></button>
       </div>
     </section>
 
@@ -98,6 +116,22 @@
     <section class="view" id="view-status"><header class="page-head"><h1>Status</h1><button class="primary" data-create="service">New service</button></header><div class="record-grid cards" id="servicesList"></div></section>
     <section class="view" id="view-analytics"><header class="page-head"><h1>Analytics</h1></header><div class="analytics-grid" id="analyticsGrid"></div></section>
 
+    <section class="view commerce-view" id="view-store">
+      <header class="page-head"><div><h1>Shop</h1><p class="page-subtitle">Products, software, services, and member releases.</p></div><div class="page-actions"><label class="store-search"><span class="sr-only">Search products</span><input id="storeSearch" type="search" placeholder="Search shop"></label><button class="secondary cart-button" id="openCart">Cart <b id="cartCount">0</b></button></div></header>
+      <div class="store-layout"><div class="product-grid" id="productGrid"></div><aside class="glass cart-panel" id="cartPanel" aria-label="Shopping cart"></aside></div>
+    </section>
+
+    <section class="view commerce-view" id="view-memberships">
+      <header class="page-head"><div><h1>Memberships</h1><p class="page-subtitle">Access, benefits, releases, and account billing.</p></div><button class="secondary hidden" id="manageBilling">Manage billing</button></header>
+      <div class="membership-current" id="currentMembership"></div>
+      <div class="plan-grid" id="planGrid"></div>
+    </section>
+
+    <section class="view commerce-view" id="view-orders">
+      <header class="page-head"><div><h1>Orders</h1><p class="page-subtitle">Purchases, payment status, and fulfillment.</p></div><button class="secondary" id="refreshOrders">Refresh</button></header>
+      <div class="order-list" id="orderList"></div>
+    </section>
+
     <section class="view" id="view-ai"><div class="ai-shell glass"><main><div class="empty-state"><span>✦</span><h2>AI</h2></div><form id="aiForm"><textarea id="aiInput" placeholder="Message"></textarea><button>↑</button></form></main><aside><button class="secondary" id="openRomeoFromAI">Romeo</button></aside></div></section>
     <section class="view" id="view-notifications"><header class="page-head"><h1>Notifications</h1><button class="secondary" id="clearNotifications">Clear</button></header><div class="record-grid" id="notificationsList"></div></section>
 
@@ -116,20 +150,19 @@
         <button class="glass more-card nav-target" data-view="learning"><span>△</span><b>Learning</b></button>
         <button class="glass more-card nav-target" data-view="analytics"><span>⌇</span><b>Analytics</b></button>
         <button class="glass more-card nav-target" data-view="status"><span>●</span><b>Status</b></button>
+        <button class="glass more-card nav-target" data-view="store"><span>◈</span><b>Shop</b></button>
+        <button class="glass more-card nav-target" data-view="memberships"><span>◆</span><b>Memberships</b></button>
+        <button class="glass more-card nav-target" data-view="orders"><span>⌁</span><b>Orders</b></button>
       </div>
     </section>
 
     <section class="view" id="view-profile"><header class="page-head"><h1>Profile</h1></header><div class="glass profile-panel"><form id="profileForm"><label>Name<input id="profileName"></label><label>Title<input id="profileTitle"></label><label>Department<input id="profileDepartment"></label><label>Location<input id="profileLocation"></label><label>Bio<textarea id="profileBio"></textarea></label><button class="primary">Save</button></form></div></section>
 
     <section class="view" id="view-admin">
-      <header class="page-head"><h1>Administration</h1></header>
-      <div class="admin-grid">
-        <article class="glass panel metric"><h2>Users</h2><strong data-count="people">0</strong></article>
-        <article class="glass panel metric"><h2>Teams</h2><strong data-count="teams">0</strong></article>
-        <article class="glass panel metric"><h2>Requests</h2><strong data-count="requests">0</strong></article>
-        <article class="glass panel metric"><h2>Assets</h2><strong data-count="assets">0</strong></article>
-        <article class="glass panel form-panel"><h2>Broadcast</h2><form id="broadcastForm"><input id="broadcastTitle" placeholder="Title" required><textarea id="broadcastBody" placeholder="Message" required></textarea><button class="primary">Send</button></form></article>
-        <article class="glass panel form-panel"><h2>Audit</h2><div id="auditList"></div></article>
+      <header class="page-head"><div><h1>Command Administration</h1><p class="page-subtitle">Users, commerce, memberships, conversations, intelligence, payments, appearance, and system activity.</p></div><span class="role-chip" id="adminRole">Restricted</span></header>
+      <div class="admin-command">
+        <nav class="glass admin-nav" id="adminNav" aria-label="Administration"></nav>
+        <main id="adminContent"></main>
       </div>
     </section>
 
@@ -143,7 +176,7 @@
       <header class="page-head"><h1>System</h1></header>
       <div class="settings-grid">
         <article class="glass panel"><h2>Account</h2><button class="secondary nav-target" data-view="profile">Profile</button><button class="secondary" id="logout">Sign out</button></article>
-        <article class="glass panel"><h2>Workspace API</h2><input id="apiEndpoint" placeholder="https://"><button class="primary" id="saveApi">Save</button></article>
+        <article class="glass panel"><h2>Platform connection</h2><input id="apiEndpoint" placeholder="https://api.example.com"><button class="primary" id="saveApi">Save endpoint</button></article>
         <article class="glass panel"><h2>Application</h2><button class="secondary" id="installButton">Install</button></article>
         <article class="glass panel link-list"><h2>Pages</h2><button class="nav-target" data-view="faq">FAQ</button><button class="nav-target" data-view="contact">Contact</button><button class="nav-target" data-view="security">Security</button><button class="nav-target" data-view="privacy">Privacy</button><button class="nav-target" data-view="terms">Terms</button></article>
         <article class="glass panel"><h2>Data</h2><button class="secondary" id="exportData">Export local data</button><button class="secondary" id="resetData">Reset local data</button></article>
@@ -153,9 +186,9 @@
 
   <nav class="mobile-nav glass">
     <button class="nav-target active" data-view="home"><b>⌂</b><span>Home</span></button>
-    <button class="nav-target" data-view="feed"><b>◉</b><span>Feed</span></button>
+    <button class="nav-target" data-view="store"><b>◈</b><span>Shop</span></button>
     <button class="nav-target" data-view="messages"><b>✉</b><span>Chat</span></button>
-    <button class="nav-target" data-view="projects"><b>⌘</b><span>Work</span></button>
+    <button class="nav-target" data-view="profile"><b>◎</b><span>Account</span></button>
     <button class="nav-target" data-view="more"><b>•••</b><span>More</span></button>
   </nav>
 </section>
@@ -164,8 +197,10 @@
 <section class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="glass modal-card"><button class="icon-button modal-close" id="closeModal">×</button><div id="modalBody"></div></div></section>
 <div class="toast" id="toast"></div>
 
-<script src="./senseos.js?v=0.6.0"></script>
-<script src="./romeo.js?v=0.6.0"></script>
-<script src="./company.js?v=0.6.0"></script>
+<script src="./config.js?v=1.0.1"></script>
+<script src="./senseos.js?v=1.0.1"></script>
+<script src="./romeo.js?v=1.0.1"></script>
+<script src="./platform.js?v=1.0.1"></script>
+<script src="./company.js?v=1.0.1"></script>
 </body>
 </html>

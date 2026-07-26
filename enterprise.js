@@ -1,10 +1,9 @@
 (() => {
   'use strict';
 
-  const VERSION = '0.7.0';
+  const VERSION = '1.0.1';
   const STORE = 'sense.enterprise.v1';
   const WORKSPACE_STORE = 'sense.workspace.empty.v1';
-  const COMPANY_STORE = 'sense.company.portal.v1';
   const STAGES = ['New', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
   const DEAL_STAGES = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost'];
   const EMPTY = {
@@ -25,7 +24,7 @@
 
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
-  const clone = value => JSON.parse(JSON.stringify(value));
+  function clone(value) { return JSON.parse(JSON.stringify(value)); }
   const uid = prefix => `${prefix}_${(globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/-/g, '').slice(0, 18)}`;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const money = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: state.settings.currency || 'USD', maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -47,6 +46,7 @@
     localStorage.setItem(STORE, JSON.stringify(state));
     renderAll();
     syncPublicCareers();
+    window.dispatchEvent(new CustomEvent('sense:enterprise-change', { detail: { enterprise: state } }));
   }
 
   function log(type, metadata = {}) {
@@ -59,19 +59,11 @@
     catch { return {}; }
   }
 
-  function companyState() {
-    try { return JSON.parse(localStorage.getItem(COMPANY_STORE) || '{}') || {}; }
-    catch { return {}; }
-  }
-
   function role() {
-    const company = companyState();
-    if (sessionStorage.getItem('sense.preview') === '1' && !company.activeAccountId) return 'Owner';
-    const workspace = (company.workspaces || []).find(item => item.id === company.activeWorkspaceId);
-    return workspace?.members?.find(item => item.accountId === company.activeAccountId)?.role || 'Member';
+    return window.SENSE_SESSION?.user?.role || 'member';
   }
 
-  function canAdmin() { return ['Owner', 'Administrator'].includes(role()); }
+  function canAdmin() { return ['owner', 'admin'].includes(role()); }
 
   function toast(text) {
     let node = $('#toast');
@@ -645,7 +637,21 @@
     if (!ready) { setTimeout(boot, 80); return; }
     booted = true;
     injectShell();injectViews();upgradeFormsPage();upgradeCareersPage();upgradeAnalyticsPage();bind();observePublic();renderAll();routeFromHash();
-    window.SENSE_ENTERPRISE={version:VERSION,state,open:enterpriseShow,openCareers:openPublicCareers,openForm:slugValue=>openPublicForm(state.forms.find(item=>item.slug===slugValue),false)};
+    window.SENSE_ENTERPRISE={
+      version:VERSION,
+      state,
+      exportState:()=>clone(state),
+      importState:value=>{
+        if(!value||typeof value!=='object')return;
+        Object.keys(state).forEach(key=>delete state[key]);
+        Object.assign(state,clone(EMPTY),value,{settings:{...EMPTY.settings,...(value.settings||{})}});
+        localStorage.setItem(STORE,JSON.stringify(state));
+        renderAll();
+      },
+      open:enterpriseShow,
+      openCareers:openPublicCareers,
+      openForm:slugValue=>openPublicForm(state.forms.find(item=>item.slug===slugValue),false)
+    };
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
