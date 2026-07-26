@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.2';
+  const VERSION = '1.0.3';
   const STORE = 'sense.enterprise.v1';
   const WORKSPACE_STORE = 'sense.workspace.empty.v1';
   const STAGES = ['New', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
